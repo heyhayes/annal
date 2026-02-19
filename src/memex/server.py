@@ -4,14 +4,12 @@ from __future__ import annotations
 
 import atexit
 import logging
-import os
 import sys
 
 from mcp.server.fastmcp import FastMCP
 
 from memex.config import MemexConfig, DEFAULT_CONFIG_PATH
-from memex.store import MemoryStore
-from memex.watcher import FileWatcher
+from memex.pool import StorePool
 
 logging.basicConfig(level=logging.INFO, stream=sys.stderr)
 logger = logging.getLogger(__name__)
@@ -98,65 +96,55 @@ review, and QA. Each role should verify against prior decisions before proceedin
 
 
 def create_server(
-    project: str | None = None,
     config_path: str = DEFAULT_CONFIG_PATH,
 ) -> FastMCP:
     """Create and configure the Memex MCP server."""
-    project = project or os.environ.get(
-        "MEMEX_PROJECT", os.path.basename(os.getcwd())
-    )
     config = MemexConfig.load(config_path)
 
-    mcp = FastMCP("memex", instructions=SERVER_INSTRUCTIONS)
+    mcp = FastMCP(
+        "memex",
+        instructions=SERVER_INSTRUCTIONS,
+        host="127.0.0.1",
+        port=config.port,
+    )
 
-    # Lazy-init store — created on first tool call so the server starts fast
-    _store: MemoryStore | None = None
-    _watcher: FileWatcher | None = None
+    pool = StorePool(config)
 
-    def get_store() -> MemoryStore:
-        nonlocal _store, _watcher
-        if _store is None:
-            _store = MemoryStore(data_dir=config.data_dir, project=project)
+    # Reconcile and start watchers for all configured projects
+    for project_name in config.projects:
+        pool.reconcile_project(project_name)
+        pool.start_watcher(project_name)
 
-            # If the project exists in config, reconcile and start watching
-            if project in config.projects:
-                proj_config = config.projects[project]
-                _watcher = FileWatcher(store=_store, project_config=proj_config)
-                logger.info("Reconciling files for project '%s'...", project)
-                count = _watcher.reconcile()
-                logger.info("Indexed %d files", count)
-                _watcher.start()
-                logger.info("File watcher started")
-                atexit.register(_watcher.stop)
-
-        return _store
+    atexit.register(pool.shutdown)
 
     @mcp.tool()
-    def store_memory(content: str, tags: list[str], source: str = "") -> str:
-        """Store a piece of knowledge in the project's memory.
+    def store_memory(project: str, content: str, tags: list[str], source: str = "") -> str:
+        """Store a piece of knowledge in a project's memory.
 
         Args:
+            project: Project name (e.g. "classmanager", "memex")
             content: The knowledge to store
             tags: Domain labels like ["billing", "checkout", "pricing"]
             source: Where this knowledge came from (file path, "session observation", etc.)
         """
-        store = get_store()
+        store = pool.get_store(project)
         mem_id = store.store(content=content, tags=tags, source=source)
-        return f"Stored memory {mem_id}"
+        return f"[{project}] Stored memory {mem_id}"
 
     @mcp.tool()
-    def search_memories(query: str, tags: list[str] | None = None, limit: int = 5) -> str:
+    def search_memories(project: str, query: str, tags: list[str] | None = None, limit: int = 5) -> str:
         """Search project memories using natural language.
 
         Args:
+            project: Project name to search in
             query: Natural language search query
             tags: Optional tag filter — only return memories with at least one of these tags
             limit: Maximum number of results (default 5)
         """
-        store = get_store()
+        store = pool.get_store(project)
         results = store.search(query=query, tags=tags, limit=limit)
         if not results:
-            return "No matching memories found."
+            return f"[{project}] No matching memories found."
 
         lines = []
         for r in results:
@@ -164,29 +152,34 @@ def create_server(
                 f"[{r['score']:.2f}] ({', '.join(r['tags'])}) {r['content']}"
                 + (f"\n  Source: {r['source']}" if r['source'] else "")
             )
-        return "\n\n".join(lines)
+        return f"[{project}] {len(results)} results:\n\n" + "\n\n".join(lines)
 
     @mcp.tool()
-    def delete_memory(memory_id: str) -> str:
+    def delete_memory(project: str, memory_id: str) -> str:
         """Delete a specific memory by its ID.
 
         Args:
+            project: Project name the memory belongs to
             memory_id: The ID of the memory to delete
         """
-        store = get_store()
+        store = pool.get_store(project)
         store.delete(memory_id)
-        return f"Deleted memory {memory_id}"
+        return f"[{project}] Deleted memory {memory_id}"
 
     @mcp.tool()
-    def list_topics() -> str:
-        """List all knowledge domains (tags) in the project with their counts."""
-        store = get_store()
+    def list_topics(project: str) -> str:
+        """List all knowledge domains (tags) in a project with their counts.
+
+        Args:
+            project: Project name to list topics for
+        """
+        store = pool.get_store(project)
         topics = store.list_topics()
         if not topics:
-            return "No topics found. The memory store is empty."
+            return f"[{project}] No topics found. The memory store is empty."
 
         lines = [f"  {tag}: {count} memories" for tag, count in sorted(topics.items(), key=lambda x: -x[1])]
-        return "Topics:\n" + "\n".join(lines)
+        return f"[{project}] Topics:\n" + "\n".join(lines)
 
     @mcp.tool()
     def init_project(project_name: str, watch_paths: list[str] | None = None) -> str:
@@ -198,30 +191,47 @@ def create_server(
         """
         config.add_project(project_name, watch_paths=watch_paths)
         config.save()
-        return f"Project '{project_name}' initialized with watch paths: {watch_paths or []}. It will activate automatically when you work in a directory named '{project_name}'."
+        if watch_paths:
+            pool.reconcile_project(project_name)
+            pool.start_watcher(project_name)
+        return f"Project '{project_name}' initialized with watch paths: {watch_paths or []}."
 
     @mcp.tool()
-    def index_files() -> str:
-        """Manually trigger re-indexing of all watched files for the current project."""
-        get_store()
-        if project not in config.projects:
-            return f"Project '{project}' has no watch paths configured. Use init_project first."
+    def index_files(project: str) -> str:
+        """Manually trigger re-indexing of all watched files for a project.
 
-        if _watcher:
-            count = _watcher.reconcile()
-        else:
-            proj_config = config.projects[project]
-            watcher = FileWatcher(store=_store, project_config=proj_config)
-            count = watcher.reconcile()
-        return f"Re-indexed {count} files."
+        Args:
+            project: Project name to re-index
+        """
+        if project not in config.projects:
+            return f"[{project}] No watch paths configured. Use init_project first."
+
+        count = pool.reconcile_project(project)
+        return f"[{project}] Re-indexed {count} files."
 
     return mcp
 
 
 def main() -> None:
     """Entry point for running the server."""
-    mcp = create_server()
-    mcp.run(transport="stdio")
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Memex MCP server")
+    parser.add_argument(
+        "--transport",
+        choices=["stdio", "streamable-http"],
+        default="stdio",
+        help="Transport protocol (default: stdio)",
+    )
+    parser.add_argument(
+        "--config",
+        default=DEFAULT_CONFIG_PATH,
+        help="Path to config file",
+    )
+    args = parser.parse_args()
+
+    mcp = create_server(config_path=args.config)
+    mcp.run(transport=args.transport)
 
 
 if __name__ == "__main__":
