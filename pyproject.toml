@@ -20,5 +20,8 @@ dev = [
     "pytest-asyncio>=0.23.0",
 ]
 
+[project.scripts]
+memex = "memex.server:main"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/memex"]
