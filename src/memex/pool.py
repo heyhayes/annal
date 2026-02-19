@@ -26,6 +26,11 @@ class StorePool:
             self._stores[project] = MemoryStore(
                 data_dir=self._config.data_dir, project=project
             )
+            # Auto-register unknown projects in config so they're discoverable
+            if project not in self._config.projects:
+                self._config.add_project(project)
+                self._config.save()
+                logger.info("Auto-registered project '%s' in config", project)
         return self._stores[project]
 
     def reconcile_project(self, project: str) -> int:

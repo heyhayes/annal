@@ -82,9 +82,13 @@ class MemexConfig:
             yaml.dump(raw, f, default_flow_style=False)
 
     def add_project(self, name: str, watch_paths: list[str] | None = None) -> ProjectConfig:
-        proj = ProjectConfig(watch_paths=watch_paths or [])
-        self.projects[name] = proj
-        return proj
+        if name in self.projects and watch_paths:
+            # Update existing project's watch paths
+            self.projects[name].watch_paths = watch_paths
+            return self.projects[name]
+        if name not in self.projects:
+            self.projects[name] = ProjectConfig(watch_paths=watch_paths or [])
+        return self.projects[name]
 
     def get_project(self, name: str) -> ProjectConfig:
         if name not in self.projects:
