@@ -18,15 +18,18 @@ logger = logging.getLogger(__name__)
 SERVER_INSTRUCTIONS = """\
 Memex is your persistent semantic memory. Memories you store survive across sessions.
 
-## Automatic project detection
-The current project is derived from the working directory name unless overridden
-via the MEMEX_PROJECT environment variable. You can check which project is active
-by looking at the project name in tool responses.
+## Project parameter
+Every tool requires a `project` parameter. Pass the project name that matches
+your current working context. The project name is typically the directory name
+of the codebase you're working in (e.g. "classmanager", "memex").
+
+If you're unsure which project to use, check your CLAUDE.md or environment
+for a MEMEX_PROJECT reference, or use the directory name of the current codebase.
 
 ## First-time setup
 If the current project has no watch paths configured, use `init_project` to set it up.
 Pass the project name and a list of directory paths to watch for file indexing.
-For example: init_project("myapp", ["/home/user/projects/myapp"])
+For example: init_project(project_name="myapp", watch_paths=["/home/user/projects/myapp"])
 
 ## When to store memories
 Store memories when you encounter information worth preserving across sessions:
