@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__annal__init_project",
+      "mcp__annal__store_memory",
+      "mcp__annal__search_memories",
+      "mcp__annal__delete_memory",
+      "WebFetch(domain:gofastmcp.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:code.visualstudio.com)",
+      "mcp__annal__list_topics"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "annal"
+  ]
+}

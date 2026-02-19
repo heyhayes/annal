@@ -1,4 +1,4 @@
-"""File watcher with startup reconciliation for Memex."""
+"""File watcher with startup reconciliation for Annal."""
 
 from __future__ import annotations
 
@@ -10,9 +10,9 @@ from pathlib import Path
 from watchdog.events import FileSystemEventHandler, FileModifiedEvent, FileCreatedEvent, FileDeletedEvent
 from watchdog.observers import Observer
 
-from memex.config import ProjectConfig
-from memex.indexer import index_file
-from memex.store import MemoryStore
+from annal.config import ProjectConfig
+from annal.indexer import index_file
+from annal.store import MemoryStore
 
 logger = logging.getLogger(__name__)
 

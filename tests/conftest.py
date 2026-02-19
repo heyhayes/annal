@@ -4,7 +4,7 @@ import pytest
 @pytest.fixture
 def tmp_data_dir(tmp_path):
     """Provide a temporary data directory for ChromaDB."""
-    return str(tmp_path / "memex_data")
+    return str(tmp_path / "annal_data")
 
 
 @pytest.fixture

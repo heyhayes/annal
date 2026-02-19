@@ -2,9 +2,9 @@ import os
 import time
 import pytest
 from pathlib import Path
-from memex.watcher import FileWatcher, matches_patterns
-from memex.store import MemoryStore
-from memex.config import ProjectConfig
+from annal.watcher import FileWatcher, matches_patterns
+from annal.store import MemoryStore
+from annal.config import ProjectConfig
 
 
 def test_matches_patterns():

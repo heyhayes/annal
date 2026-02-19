@@ -1,4 +1,4 @@
-# Memex — Semantic Memory MCP Server
+# Annal — Semantic Memory MCP Server
 
 ## What This Is
 
@@ -7,8 +7,8 @@ A standalone Python MCP server that provides semantic memory storage and retriev
 ## Project Structure
 
 ```
-memex/
-├── src/memex/          # Package source
+annal/
+├── src/annal/          # Package source
 │   ├── __init__.py
 │   ├── server.py       # MCP server entry point (FastMCP)
 │   ├── config.py       # YAML config management
@@ -33,7 +33,7 @@ pytest -v
 pytest tests/test_store.py -v
 
 # Run the server (stdio mode)
-python -m memex.server
+python -m annal.server
 ```
 
 ## Tech Stack
@@ -49,13 +49,9 @@ python -m memex.server
 
 ## Architecture Notes
 
-- ChromaDB PersistentClient stores data at `~/.memex/data` by default
-- Collections namespaced by project: `memex_{project_name}`
+- ChromaDB PersistentClient stores data at `~/.annal/data` by default
+- Collections namespaced by project: `annal_{project_name}`
 - Tags stored as JSON strings in ChromaDB metadata (ChromaDB doesn't natively support list metadata)
 - File-indexed chunks use `source: file:{path}|{heading}` format for identification
 - Tag filtering is post-query (search over-fetches then filters) due to ChromaDB metadata limitations
 - Lazy store initialization — created on first tool call, not at server startup
-
-## Implementation Plan
-
-See `docs/plans/2026-02-19-memex-implementation.md` for the full task-by-task plan.

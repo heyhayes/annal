@@ -1,4 +1,4 @@
-"""Memex MCP server — semantic memory for AI agent teams."""
+"""Annal MCP server — semantic memory for AI agent teams."""
 
 from __future__ import annotations
 
@@ -9,23 +9,23 @@ import threading
 
 from mcp.server.fastmcp import FastMCP
 
-from memex.config import MemexConfig, DEFAULT_CONFIG_PATH
-from memex.pool import StorePool
+from annal.config import AnnalConfig, DEFAULT_CONFIG_PATH
+from annal.pool import StorePool
 
 logging.basicConfig(level=logging.INFO, stream=sys.stderr)
 logger = logging.getLogger(__name__)
 
 
 SERVER_INSTRUCTIONS = """\
-Memex is your persistent semantic memory. Memories you store survive across sessions.
+Annal is your persistent semantic memory. Memories you store survive across sessions.
 
 ## Project parameter
 Every tool requires a `project` parameter. Pass the project name that matches
 your current working context. The project name is typically the directory name
-of the codebase you're working in (e.g. "classmanager", "memex").
+of the codebase you're working in (e.g. "classmanager", "annal").
 
 If you're unsure which project to use, check your CLAUDE.md or environment
-for a MEMEX_PROJECT reference, or use the directory name of the current codebase.
+for an ANNAL_PROJECT reference, or use the directory name of the current codebase.
 
 ## First-time setup
 If the current project has no watch paths configured, use `init_project` to set it up.
@@ -84,7 +84,7 @@ by any memory type tag. To search only file-indexed content, use `indexed`.
 
 ## Decision verification
 
-Before accepting, proposing, or implementing a design decision, search memex
+Before accepting, proposing, or implementing a design decision, search annal
 for prior decisions in the same domain. Use the `decision` tag combined with
 relevant domain tags:
   search_memories(query="<describe the decision area>", tags=["decision"])
@@ -102,11 +102,11 @@ review, and QA. Each role should verify against prior decisions before proceedin
 def create_server(
     config_path: str = DEFAULT_CONFIG_PATH,
 ) -> FastMCP:
-    """Create and configure the Memex MCP server."""
-    config = MemexConfig.load(config_path)
+    """Create and configure the Annal MCP server."""
+    config = AnnalConfig.load(config_path)
 
     mcp = FastMCP(
-        "memex",
+        "annal",
         instructions=SERVER_INSTRUCTIONS,
         host="127.0.0.1",
         port=config.port,
@@ -132,7 +132,7 @@ def create_server(
         """Store a piece of knowledge in a project's memory.
 
         Args:
-            project: Project name (e.g. "classmanager", "memex")
+            project: Project name (e.g. "classmanager", "annal")
             content: The knowledge to store
             tags: Domain labels like ["billing", "checkout", "pricing"]
             source: Where this knowledge came from (file path, "session observation", etc.)
@@ -203,7 +203,7 @@ def create_server(
 
     @mcp.tool()
     def init_project(project_name: str, watch_paths: list[str] | None = None) -> str:
-        """Initialize a new project in the Memex config.
+        """Initialize a new project in the Annal config.
 
         Args:
             project_name: Name for the project (used as the collection namespace)
@@ -236,7 +236,7 @@ def main() -> None:
     """Entry point for running the server."""
     import argparse
 
-    parser = argparse.ArgumentParser(description="Memex MCP server")
+    parser = argparse.ArgumentParser(description="Annal MCP server")
     parser.add_argument(
         "--transport",
         choices=["stdio", "streamable-http"],

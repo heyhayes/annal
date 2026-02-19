@@ -1,12 +1,12 @@
-"""Multi-project store and watcher pool for Memex daemon mode."""
+"""Multi-project store and watcher pool for Annal daemon mode."""
 
 from __future__ import annotations
 
 import logging
 
-from memex.config import MemexConfig
-from memex.store import MemoryStore
-from memex.watcher import FileWatcher
+from annal.config import AnnalConfig
+from annal.store import MemoryStore
+from annal.watcher import FileWatcher
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 class StorePool:
     """Manages MemoryStore and FileWatcher instances per project."""
 
-    def __init__(self, config: MemexConfig) -> None:
+    def __init__(self, config: AnnalConfig) -> None:
         self._config = config
         self._stores: dict[str, MemoryStore] = {}
         self._watchers: dict[str, FileWatcher] = {}

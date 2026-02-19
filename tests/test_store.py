@@ -1,5 +1,5 @@
 import pytest
-from memex.store import MemoryStore
+from annal.store import MemoryStore
 
 
 @pytest.fixture

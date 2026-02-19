@@ -1,18 +1,18 @@
 import os
 import yaml
 import pytest
-from memex.config import MemexConfig, ProjectConfig
+from annal.config import AnnalConfig, ProjectConfig
 
 
 def test_load_config_creates_default_when_missing(tmp_config_path):
-    config = MemexConfig.load(tmp_config_path)
+    config = AnnalConfig.load(tmp_config_path)
     assert config.data_dir is not None
     assert config.projects == {}
 
 
 def test_load_config_reads_existing(tmp_config_path):
     raw = {
-        "data_dir": "/tmp/memex_test",
+        "data_dir": "/tmp/annal_test",
         "projects": {
             "myproject": {
                 "watch_paths": ["/home/user/myproject"],
@@ -25,14 +25,14 @@ def test_load_config_reads_existing(tmp_config_path):
     with open(tmp_config_path, "w") as f:
         yaml.dump(raw, f)
 
-    config = MemexConfig.load(tmp_config_path)
-    assert config.data_dir == "/tmp/memex_test"
+    config = AnnalConfig.load(tmp_config_path)
+    assert config.data_dir == "/tmp/annal_test"
     assert "myproject" in config.projects
     assert config.projects["myproject"].watch_paths == ["/home/user/myproject"]
 
 
 def test_save_config(tmp_config_path):
-    config = MemexConfig(
+    config = AnnalConfig(
         config_path=tmp_config_path,
         data_dir="/tmp/test_data",
         projects={
@@ -50,7 +50,7 @@ def test_save_config(tmp_config_path):
 
 
 def test_add_project(tmp_config_path):
-    config = MemexConfig.load(tmp_config_path)
+    config = AnnalConfig.load(tmp_config_path)
     config.add_project("newproj", watch_paths=["/home/user/newproj"])
     assert "newproj" in config.projects
     assert config.projects["newproj"].watch_patterns == [
@@ -59,14 +59,14 @@ def test_add_project(tmp_config_path):
 
 
 def test_get_project_raises_for_unknown(tmp_config_path):
-    config = MemexConfig.load(tmp_config_path)
+    config = AnnalConfig.load(tmp_config_path)
     with pytest.raises(KeyError):
         config.get_project("nonexistent")
 
 
 def test_load_config_with_port(tmp_config_path):
     raw = {
-        "data_dir": "/tmp/memex_test",
+        "data_dir": "/tmp/annal_test",
         "port": 9300,
         "projects": {},
     }
@@ -74,10 +74,10 @@ def test_load_config_with_port(tmp_config_path):
     with open(tmp_config_path, "w") as f:
         yaml.dump(raw, f)
 
-    config = MemexConfig.load(tmp_config_path)
+    config = AnnalConfig.load(tmp_config_path)
     assert config.port == 9300
 
 
 def test_load_config_default_port(tmp_config_path):
-    config = MemexConfig.load(tmp_config_path)
+    config = AnnalConfig.load(tmp_config_path)
     assert config.port == 9200

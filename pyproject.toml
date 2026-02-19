@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "memex"
+name = "annal"
 version = "0.1.0"
 description = "Semantic memory server for AI agent teams"
 requires-python = ">=3.12"
@@ -21,7 +21,7 @@ dev = [
 ]
 
 [project.scripts]
-memex = "memex.server:main"
+annal = "annal.server:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/memex"]
+packages = ["src/annal"]

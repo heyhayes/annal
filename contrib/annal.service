@@ -1,10 +1,10 @@
 [Unit]
-Description=Memex semantic memory MCP server
+Description=Annal semantic memory MCP server
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=/home/hayes/development/personal/memex/.venv/bin/python -m memex.server --transport streamable-http
+ExecStart=/home/hayes/development/personal/memex/.venv/bin/python -m annal.server --transport streamable-http
 Restart=always
 RestartSec=3
 Environment=PYTHONUNBUFFERED=1

@@ -1,8 +1,8 @@
 import os
 import pytest
-from memex.config import MemexConfig
-from memex.store import MemoryStore
-from memex.watcher import FileWatcher
+from annal.config import AnnalConfig
+from annal.store import MemoryStore
+from annal.watcher import FileWatcher
 
 
 def test_full_workflow(tmp_data_dir, tmp_config_path, tmp_path):
@@ -19,7 +19,7 @@ def test_full_workflow(tmp_data_dir, tmp_config_path, tmp_path):
     )
 
     # 2. Create config
-    config = MemexConfig(
+    config = AnnalConfig(
         config_path=tmp_config_path,
         data_dir=tmp_data_dir,
         projects={},

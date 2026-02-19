@@ -1,7 +1,7 @@
 import os
 import pytest
-from memex.indexer import chunk_markdown, chunk_config_file, index_file
-from memex.store import MemoryStore
+from annal.indexer import chunk_markdown, chunk_config_file, index_file
+from annal.store import MemoryStore
 
 
 def test_chunk_markdown_splits_by_headings():

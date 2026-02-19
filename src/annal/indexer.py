@@ -1,11 +1,11 @@
-"""File indexing and markdown chunking for Memex."""
+"""File indexing and markdown chunking for Annal."""
 
 from __future__ import annotations
 
 import re
 from pathlib import Path
 
-from memex.store import MemoryStore
+from annal.store import MemoryStore
 
 
 def chunk_markdown(content: str, filename: str) -> list[dict]:

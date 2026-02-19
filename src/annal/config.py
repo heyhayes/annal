@@ -1,4 +1,4 @@
-"""Configuration management for Memex."""
+"""Configuration management for Annal."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ from pathlib import Path
 
 import yaml
 
-DEFAULT_DATA_DIR = os.path.expanduser("~/.memex/data")
-DEFAULT_CONFIG_PATH = os.path.expanduser("~/.memex/config.yaml")
+DEFAULT_DATA_DIR = os.path.expanduser("~/.annal/data")
+DEFAULT_CONFIG_PATH = os.path.expanduser("~/.annal/config.yaml")
 DEFAULT_PORT = 9200
 
 DEFAULT_WATCH_PATTERNS = ["**/*.md", "**/*.yaml", "**/*.toml", "**/*.json"]
@@ -32,14 +32,14 @@ class ProjectConfig:
 
 
 @dataclass
-class MemexConfig:
+class AnnalConfig:
     config_path: str = DEFAULT_CONFIG_PATH
     data_dir: str = DEFAULT_DATA_DIR
     port: int = DEFAULT_PORT
     projects: dict[str, ProjectConfig] = field(default_factory=dict)
 
     @classmethod
-    def load(cls, config_path: str = DEFAULT_CONFIG_PATH) -> MemexConfig:
+    def load(cls, config_path: str = DEFAULT_CONFIG_PATH) -> AnnalConfig:
         path = Path(config_path)
         if not path.exists():
             return cls(config_path=config_path)

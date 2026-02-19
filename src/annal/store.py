@@ -1,4 +1,4 @@
-"""ChromaDB-backed memory store for Memex."""
+"""ChromaDB-backed memory store for Annal."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ class MemoryStore:
     def __init__(self, data_dir: str, project: str) -> None:
         self._client = chromadb.PersistentClient(path=data_dir)
         self._collection = self._client.get_or_create_collection(
-            name=f"memex_{project}",
+            name=f"annal_{project}",
             metadata={"hnsw:space": "cosine"},
         )
 

@@ -1,6 +1,6 @@
 import pytest
-from memex.pool import StorePool
-from memex.config import MemexConfig, ProjectConfig
+from annal.pool import StorePool
+from annal.config import AnnalConfig, ProjectConfig
 
 
 @pytest.fixture
@@ -9,7 +9,7 @@ def config_with_projects(tmp_data_dir, tmp_config_path, tmp_path):
     watch_dir.mkdir()
     (watch_dir / "README.md").write_text("# Hello\nWorld\n")
 
-    config = MemexConfig(
+    config = AnnalConfig(
         config_path=tmp_config_path,
         data_dir=tmp_data_dir,
         projects={
