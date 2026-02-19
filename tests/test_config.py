@@ -62,3 +62,22 @@ def test_get_project_raises_for_unknown(tmp_config_path):
     config = MemexConfig.load(tmp_config_path)
     with pytest.raises(KeyError):
         config.get_project("nonexistent")
+
+
+def test_load_config_with_port(tmp_config_path):
+    raw = {
+        "data_dir": "/tmp/memex_test",
+        "port": 9300,
+        "projects": {},
+    }
+    os.makedirs(os.path.dirname(tmp_config_path), exist_ok=True)
+    with open(tmp_config_path, "w") as f:
+        yaml.dump(raw, f)
+
+    config = MemexConfig.load(tmp_config_path)
+    assert config.port == 9300
+
+
+def test_load_config_default_port(tmp_config_path):
+    config = MemexConfig.load(tmp_config_path)
+    assert config.port == 9200

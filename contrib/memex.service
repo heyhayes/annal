@@ -1,0 +1,14 @@
+[Unit]
+Description=Memex semantic memory MCP server
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/home/hayes/development/personal/memex/.venv/bin/python -m memex.server --transport streamable-http
+Restart=always
+RestartSec=3
+Environment=PYTHONUNBUFFERED=1
+KillSignal=SIGINT
+
+[Install]
+WantedBy=default.target

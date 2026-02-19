@@ -1,8 +1,5 @@
-import os
-import json
 import pytest
-import yaml
-from memex.server import create_server
+from memex.server import create_server, SERVER_INSTRUCTIONS
 from memex.config import MemexConfig
 
 
@@ -24,15 +21,15 @@ def server_env(tmp_data_dir, tmp_config_path, tmp_path):
         "config_path": tmp_config_path,
         "data_dir": tmp_data_dir,
         "watch_dir": str(watch_dir),
-        "project": "testproject",
     }
 
 
 def test_create_server(server_env):
-    mcp = create_server(
-        project=server_env["project"],
-        config_path=server_env["config_path"],
-    )
+    mcp = create_server(config_path=server_env["config_path"])
     assert mcp is not None
-    # Server should have registered tools
     assert mcp.name == "memex"
+
+
+def test_server_has_instructions(server_env):
+    mcp = create_server(config_path=server_env["config_path"])
+    assert mcp.instructions == SERVER_INSTRUCTIONS
