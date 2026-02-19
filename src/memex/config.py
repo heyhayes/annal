@@ -53,7 +53,7 @@ class MemexConfig:
 
         return cls(
             config_path=config_path,
-            data_dir=raw.get("data_dir", DEFAULT_DATA_DIR),
+            data_dir=os.path.expanduser(raw.get("data_dir", DEFAULT_DATA_DIR)),
             projects=projects,
         )
 

@@ -1,9 +1,7 @@
 import os
 import pytest
-import yaml
 from memex.config import MemexConfig
 from memex.store import MemoryStore
-from memex.indexer import index_file
 from memex.watcher import FileWatcher
 
 
