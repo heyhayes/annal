@@ -26,11 +26,17 @@ def test_reconcile_indexes_new_files(tmp_data_dir, tmp_path):
     )
 
     watcher = FileWatcher(store=store, project_config=project_config)
-    watcher.reconcile()
+    count1 = watcher.reconcile()
+    assert count1 == 1
 
     assert store.count() == 1
     results = store.search("Hello World", limit=1)
     assert len(results) == 1
+
+    # Second reconcile should skip unchanged files
+    count2 = watcher.reconcile()
+    assert count2 == 0
+    assert store.count() == 1
 
 
 def test_reconcile_skips_excluded_dirs(tmp_data_dir, tmp_path):

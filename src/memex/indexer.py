@@ -67,7 +67,7 @@ def chunk_config_file(content: str, filename: str) -> list[dict]:
     return [{"heading": filename, "content": content.strip()}]
 
 
-def index_file(store: MemoryStore, file_path: str) -> int:
+def index_file(store: MemoryStore, file_path: str, file_mtime: float | None = None) -> int:
     """Index a file into the memory store. Returns number of chunks created."""
     path = Path(file_path)
     if not path.exists():
@@ -76,6 +76,9 @@ def index_file(store: MemoryStore, file_path: str) -> int:
     content = path.read_text(encoding="utf-8", errors="replace")
     if not content.strip():
         return 0
+
+    if file_mtime is None:
+        file_mtime = path.stat().st_mtime
 
     # Delete any existing chunks from this file
     store.delete_by_source(f"file:{file_path}")
@@ -97,6 +100,7 @@ def index_file(store: MemoryStore, file_path: str) -> int:
             tags=tags,
             source=f"file:{file_path}|{chunk['heading']}",
             chunk_type="file-indexed",
+            file_mtime=file_mtime,
         )
 
     return len(chunks)

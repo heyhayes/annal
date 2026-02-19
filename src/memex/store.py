@@ -23,6 +23,7 @@ class MemoryStore:
         tags: list[str],
         source: str = "",
         chunk_type: str = "agent-memory",
+        file_mtime: float | None = None,
     ) -> str:
         mem_id = str(uuid.uuid4())
         metadata = {
@@ -31,6 +32,8 @@ class MemoryStore:
             "chunk_type": chunk_type,
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
+        if file_mtime is not None:
+            metadata["file_mtime"] = file_mtime
         self._collection.add(
             ids=[mem_id],
             documents=[content],
@@ -99,6 +102,17 @@ class MemoryStore:
                 ids_to_delete.append(all_data["ids"][i])
         if ids_to_delete:
             self._collection.delete(ids=ids_to_delete)
+
+    def get_file_mtime(self, source_prefix: str) -> float | None:
+        """Get the stored mtime for a file's chunks. Returns None if not found."""
+        all_data = self._collection.get(include=["metadatas"])
+        for meta in all_data["metadatas"] or []:
+            if meta.get("source", "").startswith(source_prefix):
+                mtime = meta.get("file_mtime")
+                if mtime is not None:
+                    return float(mtime)
+                return None
+        return None
 
     def count(self) -> int:
         return self._collection.count()

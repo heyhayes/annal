@@ -95,8 +95,9 @@ class FileWatcher:
         self._observer: Observer | None = None
 
     def reconcile(self) -> int:
-        """Scan all watch paths and index any new or changed files. Returns file count."""
+        """Scan all watch paths and index new or changed files. Returns file count."""
         total = 0
+        skipped = 0
         for watch_path in self._config.watch_paths:
             root = Path(watch_path)
             if not root.exists():
@@ -105,9 +106,22 @@ class FileWatcher:
                 if path.is_dir():
                     continue
                 rel = str(path.relative_to(root))
-                if matches_patterns(rel, self._config.watch_patterns, self._config.watch_exclude):
-                    index_file(self._store, str(path))
-                    total += 1
+                if not matches_patterns(rel, self._config.watch_patterns, self._config.watch_exclude):
+                    continue
+
+                file_path = str(path)
+                current_mtime = path.stat().st_mtime
+                stored_mtime = self._store.get_file_mtime(f"file:{file_path}")
+
+                if stored_mtime is not None and stored_mtime == current_mtime:
+                    skipped += 1
+                    continue
+
+                index_file(self._store, file_path, file_mtime=current_mtime)
+                total += 1
+
+        if skipped:
+            logger.info("Skipped %d unchanged files", skipped)
         return total
 
     def start(self) -> None:
