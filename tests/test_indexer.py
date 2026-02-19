@@ -1,0 +1,74 @@
+import os
+import pytest
+from memex.indexer import chunk_markdown, chunk_config_file, index_file
+from memex.store import MemoryStore
+
+
+def test_chunk_markdown_splits_by_headings():
+    content = """# Overview
+This is the overview section.
+
+## Architecture
+The system has three layers.
+
+### Backend
+PHP and Laravel.
+
+## Frontend
+React and TypeScript.
+"""
+    chunks = chunk_markdown(content, "README.md")
+    assert len(chunks) == 4
+    assert chunks[0]["heading"] == "README.md > Overview"
+    assert "overview section" in chunks[0]["content"]
+    assert chunks[1]["heading"] == "README.md > Architecture"
+    assert chunks[2]["heading"] == "README.md > Architecture > Backend"
+    assert chunks[3]["heading"] == "README.md > Frontend"
+
+
+def test_chunk_markdown_single_section():
+    content = "Just some text without headings."
+    chunks = chunk_markdown(content, "NOTES.md")
+    assert len(chunks) == 1
+    assert chunks[0]["heading"] == "NOTES.md"
+    assert "without headings" in chunks[0]["content"]
+
+
+def test_chunk_config_file():
+    content = '{"key": "value", "nested": {"a": 1}}'
+    chunks = chunk_config_file(content, "config.json")
+    assert len(chunks) == 1
+    assert chunks[0]["heading"] == "config.json"
+    assert '"key"' in chunks[0]["content"]
+
+
+def test_index_file_stores_chunks(tmp_data_dir, tmp_path):
+    md_file = tmp_path / "test.md"
+    md_file.write_text("# Section A\nContent A\n\n# Section B\nContent B\n")
+
+    store = MemoryStore(data_dir=tmp_data_dir, project="testproject")
+    count = index_file(store, str(md_file))
+    assert count == 2
+    assert store.count() == 2
+
+    results = store.search("Content A", limit=1)
+    assert len(results) == 1
+    assert results[0]["chunk_type"] == "file-indexed"
+
+
+def test_reindex_file_replaces_old_chunks(tmp_data_dir, tmp_path):
+    md_file = tmp_path / "test.md"
+    md_file.write_text("# Version 1\nOld content\n")
+
+    store = MemoryStore(data_dir=tmp_data_dir, project="testproject")
+    index_file(store, str(md_file))
+    assert store.count() == 1
+
+    md_file.write_text("# Version 2\nNew content\n\n# Extra\nMore stuff\n")
+    index_file(store, str(md_file))
+    assert store.count() == 2
+
+    results = store.search("Old content", limit=5)
+    # Old content should not match well anymore since it was deleted
+    for r in results:
+        assert "Old content" not in r["content"]
