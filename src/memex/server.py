@@ -138,6 +138,15 @@ def create_server(
             source: Where this knowledge came from (file path, "session observation", etc.)
         """
         store = pool.get_store(project)
+
+        # Check for near-duplicate before storing
+        existing = store.search(query=content, limit=1)
+        if existing and existing[0]["score"] > 0.95 and existing[0]["chunk_type"] == "agent-memory":
+            return (
+                f"[{project}] Skipped — similar memory already exists "
+                f"(score: {existing[0]['score']:.2f}, ID: {existing[0]['id']})"
+            )
+
         mem_id = store.store(content=content, tags=tags, source=source)
         return f"[{project}] Stored memory {mem_id}"
 
