@@ -161,6 +161,7 @@ def create_server(
             lines.append(
                 f"[{r['score']:.2f}] ({', '.join(r['tags'])}) {r['content']}"
                 + (f"\n  Source: {r['source']}" if r['source'] else "")
+                + f"\n  ID: {r['id']}"
             )
         return f"[{project}] {len(results)} results:\n\n" + "\n\n".join(lines)
 
