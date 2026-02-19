@@ -5,6 +5,7 @@ from __future__ import annotations
 import atexit
 import logging
 import sys
+import threading
 
 from mcp.server.fastmcp import FastMCP
 
@@ -113,10 +114,16 @@ def create_server(
 
     pool = StorePool(config)
 
-    # Reconcile and start watchers for all configured projects
-    for project_name in config.projects:
-        pool.reconcile_project(project_name)
-        pool.start_watcher(project_name)
+    # Reconcile and start watchers in a background thread so the HTTP
+    # server can start accepting connections immediately
+    def _startup_reconcile() -> None:
+        for project_name in config.projects:
+            logger.info("Reconciling project '%s'...", project_name)
+            pool.reconcile_project(project_name)
+            pool.start_watcher(project_name)
+        logger.info("Startup reconciliation complete")
+
+    threading.Thread(target=_startup_reconcile, daemon=True).start()
 
     atexit.register(pool.shutdown)
 
