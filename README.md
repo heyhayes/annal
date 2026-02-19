@@ -101,15 +101,40 @@ projects:
       - ".venv/**"
 ```
 
-## Running as a systemd service
+## Running as a daemon
 
-For always-on daemon mode:
+For always-on HTTP daemon mode, use the service scripts in `contrib/`. Each requires editing the path to your annal install before use.
+
+### Linux (systemd)
 
 ```bash
 cp contrib/annal.service ~/.config/systemd/user/
-# Edit ExecStart path to match your install, then:
+# Edit ExecStart path, then:
 systemctl --user daemon-reload
 systemctl --user enable --now annal
+```
+
+### macOS (launchd)
+
+```bash
+cp contrib/com.annal.server.plist ~/Library/LaunchAgents/
+# Edit the ProgramArguments path, then:
+launchctl load ~/Library/LaunchAgents/com.annal.server.plist
+```
+
+To stop: `launchctl unload ~/Library/LaunchAgents/com.annal.server.plist`
+
+### Windows (scheduled task)
+
+```powershell
+.\contrib\annal-service.ps1 -Action install -AnnalPath "C:\path\to\annal\.venv\Scripts\annal.exe"
+
+# Start immediately without waiting for next logon:
+Start-ScheduledTask -TaskName "Annal MCP Server"
+
+# Check status / uninstall:
+.\contrib\annal-service.ps1 -Action status
+.\contrib\annal-service.ps1 -Action uninstall
 ```
 
 ## Development
