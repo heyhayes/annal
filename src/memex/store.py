@@ -44,10 +44,8 @@ class MemoryStore:
         limit: int = 5,
         tags: list[str] | None = None,
     ) -> list[dict]:
-        if tags:
-            limit_query = max(limit * 3, 20)
-        else:
-            limit_query = limit
+        # Over-fetch when filtering by tags since filtering is post-query
+        limit_query = max(limit * 3, 20) if tags else limit
 
         results = self._collection.query(
             query_texts=[query],

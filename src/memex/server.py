@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import atexit
 import logging
 import os
 import sys
@@ -44,6 +45,7 @@ def create_server(
                 logger.info("Indexed %d files", count)
                 _watcher.start()
                 logger.info("File watcher started")
+                atexit.register(_watcher.stop)
 
         return _store
 
@@ -119,13 +121,16 @@ def create_server(
     @mcp.tool()
     def index_files() -> str:
         """Manually trigger re-indexing of all watched files for the current project."""
-        store = get_store()
+        get_store()
         if project not in config.projects:
             return f"Project '{project}' has no watch paths configured. Use init_project first."
 
-        proj_config = config.projects[project]
-        watcher = FileWatcher(store=store, project_config=proj_config)
-        count = watcher.reconcile()
+        if _watcher:
+            count = _watcher.reconcile()
+        else:
+            proj_config = config.projects[project]
+            watcher = FileWatcher(store=_store, project_config=proj_config)
+            count = watcher.reconcile()
         return f"Re-indexed {count} files."
 
     return mcp
