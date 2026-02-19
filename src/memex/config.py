@@ -10,12 +10,15 @@ import yaml
 
 DEFAULT_DATA_DIR = os.path.expanduser("~/.memex/data")
 DEFAULT_CONFIG_PATH = os.path.expanduser("~/.memex/config.yaml")
+DEFAULT_PORT = 9200
 
 DEFAULT_WATCH_PATTERNS = ["**/*.md", "**/*.yaml", "**/*.toml", "**/*.json"]
 DEFAULT_WATCH_EXCLUDE = [
     "node_modules/**",
     "vendor/**",
     ".git/**",
+    ".venv/**",
+    "__pycache__/**",
     "dist/**",
     "build/**",
 ]
@@ -32,6 +35,7 @@ class ProjectConfig:
 class MemexConfig:
     config_path: str = DEFAULT_CONFIG_PATH
     data_dir: str = DEFAULT_DATA_DIR
+    port: int = DEFAULT_PORT
     projects: dict[str, ProjectConfig] = field(default_factory=dict)
 
     @classmethod
@@ -54,6 +58,7 @@ class MemexConfig:
         return cls(
             config_path=config_path,
             data_dir=os.path.expanduser(raw.get("data_dir", DEFAULT_DATA_DIR)),
+            port=raw.get("port", DEFAULT_PORT),
             projects=projects,
         )
 
@@ -63,6 +68,7 @@ class MemexConfig:
 
         raw = {
             "data_dir": self.data_dir,
+            "port": self.port,
             "projects": {
                 name: {
                     "watch_paths": proj.watch_paths,
