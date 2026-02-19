@@ -1,5 +1,7 @@
 # Annal
 
+> Early stage — this project is under active development and not yet ready for production use. APIs, config formats, and storage schemas may change without notice. If you're curious, feel free to explore and open issues, but expect rough edges.
+
 Semantic memory server for AI agent teams. Stores, searches, and retrieves knowledge across sessions using ChromaDB with local ONNX embeddings, exposed as an MCP server.
 
 Designed for multi-agent workflows where analysts, architects, developers, and reviewers need shared institutional memory — decisions made months ago surface automatically when relevant, preventing contradictions and preserving context that no single session can hold.
