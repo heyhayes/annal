@@ -17,7 +17,7 @@ Agent memories and file-indexed content coexist in the same search space but are
 ## Quick start
 
 ```bash
-git clone https://github.com/yourusername/annal.git
+git clone https://github.com/heyhayes/annal.git
 cd annal
 pip install -e ".[dev]"
 
