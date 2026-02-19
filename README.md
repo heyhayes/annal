@@ -1,24 +1,93 @@
 # Memex
 
-A semantic memory MCP server for AI agent teams. Stores and retrieves knowledge using ChromaDB with local ONNX embeddings. Indexes markdown and config files automatically, and provides natural language search across both file-indexed content and agent-stored memories.
+Semantic memory server for AI agent teams. Stores, searches, and retrieves knowledge across sessions using ChromaDB with local ONNX embeddings, exposed as an MCP server.
 
-## Install
+Designed for multi-agent workflows where analysts, architects, developers, and reviewers need shared institutional memory — decisions made months ago surface automatically when relevant, preventing contradictions and preserving context that no single session can hold.
+
+## How it works
+
+Memex runs as a persistent MCP server (stdio or HTTP) and provides five core operations: store a memory, search memories by natural language, delete a memory, list topics, and initialize a project. Memories are embedded locally using all-MiniLM-L6-v2 (ONNX) and stored in ChromaDB, namespaced per project.
+
+File indexing is optional. Point Memex at directories to watch and it will chunk markdown files by heading, track modification times for incremental re-indexing, and keep the store current via watchdog filesystem events.
+
+Agent memories and file-indexed content coexist in the same search space but are distinguished by tags (`memory`, `decision`, `pattern`, `bug`, `indexed`, etc.), so agents can search everything or filter to just what they need.
+
+## Quick start
 
 ```bash
+git clone https://github.com/yourusername/memex.git
+cd memex
 pip install -e ".[dev]"
+
+# Run in stdio mode (single session)
+memex
+
+# Run as HTTP daemon (shared across sessions)
+memex --transport streamable-http
 ```
 
-## Config
+## Claude Code integration
 
-Create `~/.memex/config.yaml`:
+Add to `~/.mcp.json` for stdio mode:
+
+```json
+{
+  "mcpServers": {
+    "memex": {
+      "command": "/path/to/memex/.venv/bin/memex"
+    }
+  }
+}
+```
+
+For HTTP daemon mode (recommended when running multiple concurrent sessions):
+
+```json
+{
+  "mcpServers": {
+    "memex": {
+      "type": "http",
+      "url": "http://localhost:9200/mcp"
+    }
+  }
+}
+```
+
+## Project setup
+
+On first use, either call the `init_project` tool with watch paths for file indexing, or just start storing memories — unknown projects are auto-registered in the config.
+
+```
+init_project(project_name="myapp", watch_paths=["/home/user/projects/myapp"])
+```
+
+Every tool takes a `project` parameter. Use the directory name of the codebase you're working in (e.g. "myapp", "memex").
+
+## Tools
+
+`store_memory` — Store knowledge with tags and source attribution. Near-duplicates (>95% similarity) are automatically skipped.
+
+`search_memories` — Natural language search across all memories, with optional tag filtering. Returns similarity scores and memory IDs.
+
+`delete_memory` — Remove a specific memory by ID.
+
+`list_topics` — Show all tags and their frequency counts.
+
+`init_project` — Register a project with watch paths for file indexing.
+
+`index_files` — Manually re-index all watched files for a project.
+
+## Configuration
+
+`~/.memex/config.yaml`:
 
 ```yaml
 data_dir: ~/.memex/data
-
+port: 9200
 projects:
-  myproject:
+  myapp:
     watch_paths:
-      - /path/to/your/project
+      - /home/user/projects/myapp
     watch_patterns:
       - "**/*.md"
       - "**/*.yaml"
@@ -26,41 +95,28 @@ projects:
       - "**/*.json"
     watch_exclude:
       - "node_modules/**"
-      - "vendor/**"
       - ".git/**"
+      - ".venv/**"
 ```
 
-## Claude Code Integration
+## Running as a systemd service
 
-Add to `~/.claude/settings.json`:
-
-```json
-{
-  "mcpServers": {
-    "memex": {
-      "command": "/path/to/memex/.venv/bin/python",
-      "args": ["-m", "memex.server"],
-      "env": {
-        "MEMEX_PROJECT": "myproject"
-      }
-    }
-  }
-}
-```
-
-## Tools
-
-The server exposes 6 MCP tools:
-
-`store_memory` — Store a piece of knowledge with tags and source attribution.
-`search_memories` — Natural language search across all memories, with optional tag filtering.
-`delete_memory` — Remove a specific memory by ID.
-`list_topics` — Show all tags and their frequency counts.
-`init_project` — Register a new project in the config with watch paths.
-`index_files` — Manually re-index all watched files for the current project.
-
-## Running Tests
+For always-on daemon mode:
 
 ```bash
+cp contrib/memex.service ~/.config/systemd/user/
+# Edit ExecStart path to match your install, then:
+systemctl --user daemon-reload
+systemctl --user enable --now memex
+```
+
+## Development
+
+```bash
+pip install -e ".[dev]"
 pytest -v
 ```
+
+## License
+
+MIT — see [LICENSE](LICENSE).
