@@ -81,3 +81,30 @@ def test_load_config_with_port(tmp_config_path):
 def test_load_config_default_port(tmp_config_path):
     config = AnnalConfig.load(tmp_config_path)
     assert config.port == 9200
+
+
+def test_add_project_with_custom_patterns(tmp_config_path):
+    config = AnnalConfig.load(tmp_config_path)
+    config.add_project(
+        "custom",
+        watch_paths=["/home/user/custom"],
+        watch_patterns=["**/*.py"],
+        watch_exclude=["**/test/**"],
+    )
+    proj = config.projects["custom"]
+    assert proj.watch_patterns == ["**/*.py"]
+    assert proj.watch_exclude == ["**/test/**"]
+
+
+def test_add_project_updates_existing_patterns(tmp_config_path):
+    config = AnnalConfig.load(tmp_config_path)
+    config.add_project("proj", watch_paths=["/tmp/proj"])
+    # Defaults should be applied on creation
+    from annal.config import DEFAULT_WATCH_EXCLUDE
+    assert config.projects["proj"].watch_exclude == list(DEFAULT_WATCH_EXCLUDE)
+
+    # Now update just the excludes
+    config.add_project("proj", watch_exclude=["**/custom_vendor/**"])
+    assert config.projects["proj"].watch_exclude == ["**/custom_vendor/**"]
+    # watch_paths should be unchanged
+    assert config.projects["proj"].watch_paths == ["/tmp/proj"]

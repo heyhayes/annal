@@ -14,6 +14,24 @@ def test_matches_patterns():
     assert matches_patterns("src/config.yaml", ["**/*.yaml", "**/*.md"], []) is True
 
 
+def test_matches_patterns_excludes_nested_vendor():
+    """Depth-independent excludes should match vendor dirs at any nesting level."""
+    excludes = ["**/node_modules/**", "**/vendor/**"]
+    patterns = ["**/*.md", "**/*.json"]
+
+    # Top-level — still excluded
+    assert matches_patterns("node_modules/pkg/README.md", patterns, excludes) is False
+    assert matches_patterns("vendor/lib/config.json", patterns, excludes) is False
+
+    # Nested — the whole point of this fix
+    assert matches_patterns("backend/src/vendor/lib/README.md", patterns, excludes) is False
+    assert matches_patterns("frontend/node_modules/react/package.json", patterns, excludes) is False
+
+    # Non-vendor paths should still match
+    assert matches_patterns("backend/src/README.md", patterns, excludes) is True
+    assert matches_patterns("docs/config.json", patterns, excludes) is True
+
+
 def test_reconcile_indexes_new_files(tmp_data_dir, tmp_path):
     # Create a markdown file
     md_file = tmp_path / "test.md"

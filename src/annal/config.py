@@ -14,13 +14,13 @@ DEFAULT_PORT = 9200
 
 DEFAULT_WATCH_PATTERNS = ["**/*.md", "**/*.yaml", "**/*.toml", "**/*.json"]
 DEFAULT_WATCH_EXCLUDE = [
-    "node_modules/**",
-    "vendor/**",
-    ".git/**",
-    ".venv/**",
-    "__pycache__/**",
-    "dist/**",
-    "build/**",
+    "**/node_modules/**",
+    "**/vendor/**",
+    "**/.git/**",
+    "**/.venv/**",
+    "**/__pycache__/**",
+    "**/dist/**",
+    "**/build/**",
 ]
 
 
@@ -81,13 +81,27 @@ class AnnalConfig:
         with open(path, "w") as f:
             yaml.dump(raw, f, default_flow_style=False)
 
-    def add_project(self, name: str, watch_paths: list[str] | None = None) -> ProjectConfig:
-        if name in self.projects and watch_paths:
-            # Update existing project's watch paths
-            self.projects[name].watch_paths = watch_paths
-            return self.projects[name]
-        if name not in self.projects:
-            self.projects[name] = ProjectConfig(watch_paths=watch_paths or [])
+    def add_project(
+        self,
+        name: str,
+        watch_paths: list[str] | None = None,
+        watch_patterns: list[str] | None = None,
+        watch_exclude: list[str] | None = None,
+    ) -> ProjectConfig:
+        if name in self.projects:
+            proj = self.projects[name]
+            if watch_paths:
+                proj.watch_paths = watch_paths
+            if watch_patterns is not None:
+                proj.watch_patterns = watch_patterns
+            if watch_exclude is not None:
+                proj.watch_exclude = watch_exclude
+            return proj
+        self.projects[name] = ProjectConfig(
+            watch_paths=watch_paths or [],
+            watch_patterns=watch_patterns or list(DEFAULT_WATCH_PATTERNS),
+            watch_exclude=watch_exclude or list(DEFAULT_WATCH_EXCLUDE),
+        )
         return self.projects[name]
 
     def get_project(self, name: str) -> ProjectConfig:
