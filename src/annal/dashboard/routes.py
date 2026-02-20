@@ -159,9 +159,11 @@ def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
         if not project or not query:
             return HTMLResponse("Missing project or query", status_code=400)
 
+        tags_raw = form.get("tags", "")
+        tags = [t.strip() for t in tags_raw.split(",") if t.strip()] if tags_raw else None
         limit = int(form.get("limit", str(PAGE_SIZE)))
         store = pool.get_store(project)
-        results = store.search(query=query, limit=limit)
+        results = store.search(query=query, tags=tags, limit=limit)
 
         ctx = {
             "memories": results,
@@ -169,9 +171,9 @@ def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
             "page": 1,
             "total_pages": 1,
             "total": len(results),
-            "chunk_type": "",
-            "source": "",
-            "tags": "",
+            "chunk_type": form.get("type", ""),
+            "source": form.get("source", ""),
+            "tags": tags_raw,
             "q": query,
         }
         return templates.TemplateResponse(request, "_table.html", ctx)

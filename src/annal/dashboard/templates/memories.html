@@ -85,11 +85,15 @@
 </table>
 
 <div class="pagination">
+  <input type="hidden" name="page" id="page-input" value="{{ page }}">
   {% if page > 1 %}
   <a href="#"
      class="btn btn-ghost"
-     hx-get="/memories/table?project={{ project }}&type={{ chunk_type }}&source={{ source }}&tags={{ tags }}&page={{ page - 1 }}"
-     hx-target="#memory-table">
+     hx-get="/memories/table"
+     hx-target="#memory-table"
+     hx-include="[name]"
+     hx-vals='{"page": "{{ page - 1 }}"}'
+     >
     &laquo; Prev
   </a>
   {% endif %}
@@ -97,8 +101,11 @@
   {% if page < total_pages %}
   <a href="#"
      class="btn btn-ghost"
-     hx-get="/memories/table?project={{ project }}&type={{ chunk_type }}&source={{ source }}&tags={{ tags }}&page={{ page + 1 }}"
-     hx-target="#memory-table">
+     hx-get="/memories/table"
+     hx-target="#memory-table"
+     hx-include="[name]"
+     hx-vals='{"page": "{{ page + 1 }}"}'
+     >
     Next &raquo;
   </a>
   {% endif %}
