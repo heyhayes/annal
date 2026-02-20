@@ -14,14 +14,14 @@ Compiled from the initial spike. Items marked with [field] are things to validat
 - ~~`init_project` patterns/excludes~~ — accepts `watch_patterns` and `watch_exclude` params
 - ~~`index_files` clears stale chunks~~ — deletes all `file:` chunks before re-reconciling
 
-## Spike 3 scope
+## Shipped (spike 3 — 2026-02-20)
 
-- Tags input normalization — accept `string | list[str]` for tags param, coerce to list internally. P0 fix from Codex battle test.
-- Default min_score cutoff — suppress negative-score results from probe search by default, add optional `min_score` param. P0 fix.
-- Dashboard SSE live updates — push events via Server-Sent Events when memories are stored/deleted/indexed, using HTMX `hx-ext="sse"`. Activity indicator for reconciliation in progress.
-- Watcher resilience — wrap `index_file` calls in try/except so permission errors, broken symlinks, or bad files log and continue instead of crashing the watcher thread.
-- `update_memory` tool — revise content/tags on an existing memory without losing ID or `created_at`. Uses ChromaDB upsert.
-- `annal install` one-shot setup — detect OS, create service file (systemd/launchd/Windows), write `~/.mcp.json` for Claude Code, add Codex and Gemini config entries, start the daemon. One command from `pip install annal` to running.
+- ~~Tags input normalization~~ — accept `string | list[str]` for tags param, coerce to list internally. P0 fix from Codex battle test.
+- ~~Default min_score cutoff~~ — suppress negative-score results from probe search by default, add optional `min_score` param. P0 fix.
+- ~~Dashboard SSE live updates~~ — push events via Server-Sent Events when memories are stored/deleted/indexed, using HTMX `hx-ext="sse"`. Activity indicator for reconciliation in progress.
+- ~~Watcher resilience~~ — wrap `index_file` calls in try/except so permission errors, broken symlinks, or bad files log and continue instead of crashing the watcher thread.
+- ~~`update_memory` tool~~ — revise content/tags on an existing memory without losing ID or `created_at`. Uses ChromaDB update.
+- ~~`annal install` one-shot setup~~ — detect OS, create service file (systemd/launchd/Windows), write `~/.mcp.json` for Claude Code, add Codex and Gemini config entries, start the daemon. One command from `pip install annal` to running.
 
 ## Parked
 
@@ -95,6 +95,16 @@ Compiled from the initial spike. Items marked with [field] are things to validat
 - Store pool thread safety — the StorePool dict isn't protected by a lock. If two requests hit get_store for a new project simultaneously, could we get a race condition?
 - Reconcile creates throwaway FileWatcher — `pool.reconcile_project` instantiates a full FileWatcher just to call `.reconcile()`, then discards it. `start_watcher` then creates another one. The reconcile logic could be a standalone function or live on the pool directly.
 - Cross-project search — allow agents to search across multiple project collections so experience from one codebase can inform work in another. A BA agent who learned domain patterns in project X should be able to draw on that knowledge in project Y. Fan-out approach: query all (or specified) project collections in parallel, merge results by similarity score. Simpler than agent-scoped collections because agents don't need to decide at storage time whether knowledge is "project-specific" or "portable." Could add an optional `projects` parameter to `search_memories` (list of project names, or `"*"` for all).
+
+## From spike 3 code reviews
+
+- `updated_at` inconsistency — `get_by_ids` returns `updated_at` but `search()` and `browse()` do not. Memories that have been updated show the field in `expand_memories` but not in `search_memories` or the dashboard. Add `updated_at` to all retrieval methods for consistency.
+- EventBus thread safety — `_queues` list is mutated from multiple threads. CPython GIL makes this safe in practice, but a `threading.Lock` around subscribe/unsubscribe/push would make it correct by contract.
+- SSE slow client handling — `run_in_executor(None, q.get)` blocks a thread pool thread indefinitely if no events are pushed and the client disconnects. Use `q.get(timeout=N)` in a loop so threads can check for cancellation.
+- HTMX SSE trigger redundancy — `memories.html` uses both `sse-swap` and `hx-trigger` for the same event (`memory_stored`), which is confusing. Simplify to use only `hx-trigger` with `sse-connect`.
+- `_annal_executable()` fallback breaks launchd — the `python -m annal.server` fallback returns a single string that becomes one `<string>` element in the plist, but launchd needs separate elements per argument. Only affects users running from raw checkouts (not `pip install`).
+- Test gaps: no tests for `update_memory` with nonexistent ID, no-op update_memory guard, update of source-only, Codex/Gemini uninstall cleanup, install idempotency (calling install twice).
+- `annal serve` subcommand may be dead weight — existing service files and scripts use bare `annal --transport ...`. The `serve` subcommand adds argparse complexity for no current consumers.
 
 ## Future considerations (not for next spike)
 
