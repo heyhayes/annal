@@ -2,15 +2,42 @@
 
 Compiled from the initial spike. Items marked with [field] are things to validate during real-world use before committing to implementation.
 
-## Parked from this session
+## Shipped (spike 2 — 2026-02-20)
+
+- ~~Probe/expand retrieval~~ — `mode="probe"` on `search_memories` + `expand_memories` tool
+- ~~Dedup check only examines limit=1~~ — now searches limit=5 and scans through file-indexed chunks
+- ~~Empty collection search~~ — early return when collection count is 0
+- ~~Lower requires-python to >=3.11~~ — no 3.12-specific features in use
+- ~~Recall triggers in SERVER_INSTRUCTIONS~~ — added "When to search" section with probe mode guidance
+- ~~Memory dashboard~~ — HTMX + Jinja2 + Starlette dashboard on background thread (browse, search, delete, stats, bulk delete by filter, expandable content)
+- ~~Depth-independent vendor excludes~~ — `**/node_modules/**` instead of `node_modules/**`
+- ~~`init_project` patterns/excludes~~ — accepts `watch_patterns` and `watch_exclude` params
+- ~~`index_files` clears stale chunks~~ — deletes all `file:` chunks before re-reconciling
+
+## Spike 3 scope
+
+- Tags input normalization — accept `string | list[str]` for tags param, coerce to list internally. P0 fix from Codex battle test.
+- Default min_score cutoff — suppress negative-score results from probe search by default, add optional `min_score` param. P0 fix.
+- Dashboard SSE live updates — push events via Server-Sent Events when memories are stored/deleted/indexed, using HTMX `hx-ext="sse"`. Activity indicator for reconciliation in progress.
+- Watcher resilience — wrap `index_file` calls in try/except so permission errors, broken symlinks, or bad files log and continue instead of crashing the watcher thread.
+- `update_memory` tool — revise content/tags on an existing memory without losing ID or `created_at`. Uses ChromaDB upsert.
+- `annal install` one-shot setup — detect OS, create service file (systemd/launchd/Windows), write `~/.mcp.json` for Claude Code, add Codex and Gemini config entries, start the daemon. One command from `pip install annal` to running.
+
+## Parked
 
 - `annal --install-service` CLI command — detect OS and generate/install the appropriate service file (systemd, launchd, or Windows scheduled task) automatically instead of requiring manual setup from contrib/
 
-## Bugs
+## Dashboard
 
-- Dedup check only examines limit=1 — `store_memory` searches for near-duplicates with `limit=1`, but the nearest result might be a file-indexed chunk (which gets skipped by the `chunk_type == "agent-memory"` check). An actual near-duplicate agent memory at position 2 or 3 would never be seen. Fix: increase the dedup search limit to 3-5 and check all results, or add a `where` filter for `chunk_type`.
-- Empty collection search — `store.search` on an empty collection falls through to querying for 1 result via the `or 1` fallback. ChromaDB may raise or return unexpected results. Should short-circuit with `if self._collection.count() == 0: return []`.
-- Lower requires-python to >=3.11 — the codebase uses `from __future__ import annotations` everywhere and no 3.12-specific features. Currently excludes 3.11 users unnecessarily.
+- Live updates via SSE — dashboard is static right now, no feedback when memories are being stored/deleted/indexed in the background. Use HTMX's `hx-ext="sse"` to push events from the server when the store changes, so the table and counts update in real time. Gives visibility into whether indexing is running and what agents are learning as it happens.
+- Activity indicator — show when file reconciliation or indexing is in progress (spinner, progress bar, or log stream).
+- [field] Performance with large result sets — browse loads all matching items into memory for client-side pagination. May need server-side cursor pagination for projects with thousands of chunks.
+
+## From battle testing (Codex, 2026-02-20)
+
+- Input normalization for tags — Codex sent `tags="dashboard"` (bare string) instead of `["dashboard"]`, causing a validation error. Accept `string | list[str]` and coerce to list internally. P0.
+- Default min_score cutoff — probe search returned results with negative scores (-0.03, -0.06) which are pure noise. Add an optional `min_score` param to `search_memories` and suppress negatives by default. P0.
+- Structured JSON responses — Codex suggested returning `{results: [{id, content_preview, tags, score}], meta: {query, mode, total}}` alongside or instead of formatted text. Worth considering for non-Claude clients that want to process results programmatically. P2.
 
 ## Retrieval quality
 
@@ -27,7 +54,7 @@ Compiled from the initial spike. Items marked with [field] are things to validat
 
 - Passive vs active memory problem — observed in real use: an LLM defaulted to its built-in passive memory system (MEMORY.md, always loaded in the system prompt, zero-effort writes) over making active tool calls to Annal, despite Annal being configured and the instructions saying to use it. The passive system won because it requires no decisions about when to store, what to tag, or when to search. This is a fundamental UX friction for any tool-call-based memory system. Possible directions: make storage more automatic (agent hooks that trigger on certain events?), reduce the tagging burden (infer tags from content?), or find ways to make the value of semantic search over flat files more immediately obvious to the agent.
 - [field] Agent compliance with memory instructions — do agents actually follow the SERVER_INSTRUCTIONS to search before starting work and store findings as they go? Track how often agents use Annal when it's available vs ignoring it. The instructions may need to be more prescriptive or the friction lower.
-- Recall triggers in SERVER_INSTRUCTIONS — the current instructions have a "When to store" section but no "When to search" guidance. Observed in real use: an agent answered "what did you just do?" by reaching for git log instead of Annal, because recall-oriented questions weren't listed as search triggers. The instructions should explicitly list question patterns that should prompt a memory search: "what were we working on?", "what did we decide?", "where did we leave off?", "have we seen this before?", "what's the context on X?" — any question about prior work, decisions, or session history. This is separate from the session-start search; it's about recognizing mid-conversation moments where memory recall is the right first move.
+- SERVER_INSTRUCTIONS don't reach subagents — verified that the MCP server correctly delivers instructions in the `initialize` response (confirmed via raw HTTP test), and the primary Claude Code session receives them (visible in system prompt under "MCP Server Instructions"). However, subagents spawned via the Task tool reported not seeing them. This means for multi-agent workflows, SERVER_INSTRUCTIONS only influence the primary agent. The CLAUDE.md `<annal_semantic_memory>` section is the reliable path for all agents. Implication: critical behaviour nudges (like decision verification, recall triggers) should live in CLAUDE.md, not only in SERVER_INSTRUCTIONS. SERVER_INSTRUCTIONS are a bonus for the primary session, not the sole instruction surface.
 
 ## Developer experience
 
@@ -47,7 +74,6 @@ Compiled from the initial spike. Items marked with [field] are things to validat
 - `add_tags` / `retag_memory` — modify tags on an existing memory after storage. If an agent realizes a set of memories should have had a `billing` tag, there's currently no recourse. Just a metadata update on the ChromaDB document.
 - `index_status` — return per-project diagnostics: how many files are being watched, how many chunks indexed, when reconciliation last ran, which files failed (if error tracking is added). Agents are currently flying blind about what's in the file-indexed portion of the store.
 - Source-scoped search — add an optional `source_prefix` filter to `search_memories` so agents can search within a specific file's chunks or only within agent memories. Useful when the agent knows the knowledge came from a specific document.
-- Probe/expand retrieval — add `mode="probe"` to `search_memories` that returns truncated content (title/heading + 2-line summary + tags + date + ID), plus an `expand_memories(ids=[...])` tool to fetch full content on demand. Prevents context flooding on large stores. Two independent reviewers flagged this as high-value.
 - Time window filter — add optional `after` / `before` date parameters to `search_memories`. ChromaDB metadata supports `$gte`/`$lte` on `created_at`, so this is low-cost. Useful for scoping searches to recent decisions or filtering out stale context.
 - CLI subcommands — extend the `annal` entry point beyond just running the server. Add `annal search "query" --project foo --tags decision`, `annal store --project foo --tags decision`, `annal topics --project foo`. Makes Annal usable from the terminal without the agent stack, good for debugging and manual curation.
 - Import/export — export a project to JSONL (id, text, metadata), import from JSONL. Useful for testing, portability, backups, and open-source readiness. Simple format, no external dependencies.
