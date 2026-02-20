@@ -124,6 +124,11 @@
 </div>
 
 <script>
+function toggleExpand(td) {
+  if (!td.querySelector('.content-full')) return;
+  td.classList.toggle('expanded');
+}
+
 function toggleBulkBtn() {
   const btn = document.getElementById('bulk-delete-btn');
   const checked = document.querySelectorAll('.row-check:checked').length;

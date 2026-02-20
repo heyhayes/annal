@@ -3,8 +3,11 @@
   <td class="col-check">
     <input type="checkbox" class="row-check" value="{{ mem.id }}" onchange="toggleBulkBtn()">
   </td>
-  <td class="col-content">
-    <div class="content-snippet">{{ mem.content[:150] }}{% if mem.content|length > 150 %}...{% endif %}</div>
+  <td class="col-content" onclick="toggleExpand(this)">
+    <div class="content-snippet">{{ mem.content[:150] }}{% if mem.content|length > 150 %}…{% endif %}</div>
+    {% if mem.content|length > 150 %}
+    <div class="content-full">{{ mem.content }}</div>
+    {% endif %}
   </td>
   <td class="col-source">
     <span class="source-text" title="{{ mem.source }}">{{ mem.source[:60] }}{% if mem.source|length > 60 %}...{% endif %}</span>

@@ -487,12 +487,37 @@ body {
   text-align: center;
 }
 
+.col-content {
+  cursor: pointer;
+}
+
 .content-snippet {
   font-family: var(--font-mono);
   font-size: 0.78rem;
   line-height: 1.45;
   color: var(--text-primary);
   word-break: break-word;
+}
+
+.content-full {
+  display: none;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  line-height: 1.6;
+  color: var(--text-primary);
+  word-break: break-word;
+  white-space: pre-wrap;
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--border-subtle);
+  margin-top: 0.4rem;
+}
+
+.col-content.expanded .content-snippet {
+  display: none;
+}
+
+.col-content.expanded .content-full {
+  display: block;
 }
 
 .source-text {
