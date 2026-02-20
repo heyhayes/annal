@@ -180,3 +180,24 @@ def test_search(dashboard_with_pool):
     html = response.text
     # The search should return results rendered as table rows
     assert "Billing decision about rounding" in html
+
+
+def test_bulk_delete_filter(dashboard_with_pool):
+    """Delete all memories matching a filter (e.g. all file-indexed chunks)."""
+    client, pool = dashboard_with_pool
+    store = pool.get_store("testproj")
+
+    assert store.count() == 3
+
+    # Delete all file-indexed chunks
+    response = client.post(
+        "/memories/bulk-delete-filter",
+        data={"project": "testproj", "type": "file-indexed"},
+    )
+    assert response.status_code == 200
+
+    # Only agent-memory chunks should remain
+    remaining, total = store.browse()
+    assert total == 2
+    for m in remaining:
+        assert m["chunk_type"] == "agent-memory"

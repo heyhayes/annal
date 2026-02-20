@@ -178,11 +178,48 @@ def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
         }
         return templates.TemplateResponse(request, "_table.html", ctx)
 
+    async def bulk_delete_filter(request: Request) -> Response:
+        """Delete ALL memories matching the current filter, then return updated table."""
+        form = await request.form()
+        project = form.get("project", "")
+        if not project:
+            return HTMLResponse("Missing project parameter", status_code=400)
+
+        chunk_type = form.get("type", "") or None
+        source_prefix = form.get("source", "") or None
+        tags_raw = form.get("tags", "")
+        tags = [t.strip() for t in tags_raw.split(",") if t.strip()] if tags_raw else None
+
+        store = pool.get_store(project)
+        # Fetch all matching IDs (no pagination — get everything)
+        collection_size = store.count() or 1
+        all_matching, _ = store.browse(
+            offset=0, limit=collection_size,
+            chunk_type=chunk_type,
+            source_prefix=source_prefix,
+            tags=tags,
+        )
+        for mem in all_matching:
+            store.delete(mem["id"])
+
+        # Return fresh table at page 1
+        params = {
+            "project": project,
+            "chunk_type": chunk_type,
+            "source_prefix": source_prefix,
+            "tags": tags,
+            "page": 1,
+            "q": "",
+        }
+        ctx = _fetch_memories(pool, params)
+        return templates.TemplateResponse(request, "_table.html", ctx)
+
     return [
         Route("/", index),
         Route("/memories", memories),
         Route("/memories/table", memories_table),
         Route("/memories/bulk-delete", bulk_delete, methods=["POST"]),
+        Route("/memories/bulk-delete-filter", bulk_delete_filter, methods=["POST"]),
         Route("/memories/{memory_id}", delete_memory, methods=["DELETE"]),
         Route("/search", search, methods=["POST"]),
     ]

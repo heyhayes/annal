@@ -5,7 +5,7 @@
 {% block content %}
 <div class="page-header">
   <h1>{{ project }}</h1>
-  <span class="page-count">{{ total }} memories</span>
+  <span class="page-count" id="memory-count">{{ total }} memories</span>
 </div>
 
 <div class="filter-bar">
@@ -15,7 +15,8 @@
     <select name="type"
             hx-get="/memories/table"
             hx-target="#memory-table"
-            hx-include="[name]">
+            hx-include="[name]"
+            hx-vals='{"page": "1"}'>
       <option value="">All types</option>
       <option value="agent-memory" {% if chunk_type == "agent-memory" %}selected{% endif %}>agent-memory</option>
       <option value="file-indexed" {% if chunk_type == "file-indexed" %}selected{% endif %}>file-indexed</option>
@@ -28,6 +29,7 @@
            hx-get="/memories/table"
            hx-target="#memory-table"
            hx-include="[name]"
+           hx-vals='{"page": "1"}'
            hx-trigger="keyup changed delay:300ms">
 
     <input type="text"
@@ -37,6 +39,7 @@
            hx-get="/memories/table"
            hx-target="#memory-table"
            hx-include="[name]"
+           hx-vals='{"page": "1"}'
            hx-trigger="keyup changed delay:300ms">
   </div>
 
@@ -59,8 +62,17 @@
           hx-target="#memory-table"
           hx-include="[name]"
           hx-vals="js:{ids: [...document.querySelectorAll('.row-check:checked')].map(c => c.value).join(',')}"
+          hx-confirm="Delete selected memories?"
           disabled>
     Delete selected
+  </button>
+
+  <button class="btn btn-danger"
+          hx-post="/memories/bulk-delete-filter"
+          hx-target="#memory-table"
+          hx-include="[name]"
+          hx-confirm="js:confirmFilterDelete()">
+    Delete all matching
   </button>
 </div>
 
@@ -84,7 +96,7 @@
   </tbody>
 </table>
 
-<div class="pagination">
+<div class="pagination" id="pagination">
   <input type="hidden" name="page" id="page-input" value="{{ page }}">
   {% if page > 1 %}
   <a href="#"
@@ -120,5 +132,10 @@ function toggleBulkBtn() {
 document.addEventListener('change', function(e) {
   if (e.target.classList.contains('row-check')) toggleBulkBtn();
 });
+
+function confirmFilterDelete() {
+  const count = document.getElementById('memory-count').textContent.split(' ')[0];
+  return 'This will delete ALL ' + count + ' memories matching the current filters. This cannot be undone. Are you sure?';
+}
 </script>
 {% endblock %}

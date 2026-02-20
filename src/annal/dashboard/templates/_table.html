@@ -36,3 +36,33 @@
   <td colspan="7" class="empty-table">No memories found.</td>
 </tr>
 {% endfor %}
+
+<!-- OOB swap: update pagination + count outside the tbody -->
+<div id="pagination" hx-swap-oob="innerHTML">
+  <input type="hidden" name="page" id="page-input" value="{{ page }}">
+  {% if page > 1 %}
+  <a href="#"
+     class="btn btn-ghost"
+     hx-get="/memories/table"
+     hx-target="#memory-table"
+     hx-include="[name]"
+     hx-vals='{"page": "{{ page - 1 }}"}'
+     >
+    &laquo; Prev
+  </a>
+  {% endif %}
+  <span class="page-info">Page {{ page }} of {{ total_pages }}</span>
+  {% if page < total_pages %}
+  <a href="#"
+     class="btn btn-ghost"
+     hx-get="/memories/table"
+     hx-target="#memory-table"
+     hx-include="[name]"
+     hx-vals='{"page": "{{ page + 1 }}"}'
+     >
+    Next &raquo;
+  </a>
+  {% endif %}
+</div>
+
+<span id="memory-count" hx-swap-oob="innerHTML">{{ total }} memories</span>
