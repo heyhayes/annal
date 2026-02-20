@@ -223,3 +223,53 @@ async def test_index_files_clears_stale_chunks(server_env):
         "query": "agent memory persist",
     })
     assert "Agent memory that should persist" in search_result
+
+
+@pytest.mark.asyncio
+async def test_store_memory_accepts_string_tags(mcp):
+    """store_memory should accept a bare string for tags (not just a list)."""
+    result = await _call(mcp, "store_memory", {
+        "project": "test",
+        "content": "Bare string tag test",
+        "tags": "decision",
+    })
+    assert "Stored memory" in result
+
+
+@pytest.mark.asyncio
+async def test_search_memories_accepts_string_tags(mcp):
+    """search_memories should accept a bare string for the tags filter."""
+    await _call(mcp, "store_memory", {
+        "project": "test",
+        "content": "Memory tagged for searchable string test",
+        "tags": ["searchable"],
+    })
+    result = await _call(mcp, "search_memories", {
+        "project": "test",
+        "query": "searchable string test",
+        "tags": "searchable",
+    })
+    assert "Memory tagged for searchable string test" in result
+
+
+@pytest.mark.asyncio
+async def test_store_memory_lowercases_and_dedupes_tags(mcp):
+    """Tags should be lowercased and deduplicated."""
+    store_result = await _call(mcp, "store_memory", {
+        "project": "test",
+        "content": "Lowercase and dedupe tag test",
+        "tags": ["Decision", "BILLING", "decision"],
+    })
+    assert "Stored memory" in store_result
+
+    mem_id = store_result.split("Stored memory ")[-1].strip()
+    expand_result = await _call(mcp, "expand_memories", {
+        "project": "test",
+        "memory_ids": [mem_id],
+    })
+    # Should contain lowercase tags with no duplicates
+    assert "decision" in expand_result
+    assert "billing" in expand_result
+    # Should not contain uppercase variants or duplicated tags
+    assert "Decision" not in expand_result
+    assert "BILLING" not in expand_result

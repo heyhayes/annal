@@ -16,6 +16,22 @@ logging.basicConfig(level=logging.INFO, stream=sys.stderr)
 logger = logging.getLogger(__name__)
 
 
+def _normalize_tags(tags: list[str] | str | None) -> list[str] | None:
+    """Normalize tags input: accept string or list, lowercase, strip, deduplicate."""
+    if tags is None:
+        return None
+    if isinstance(tags, str):
+        tags = [tags]
+    seen: set[str] = set()
+    result: list[str] = []
+    for tag in tags:
+        normalized = tag.strip().lower()
+        if normalized and normalized not in seen:
+            seen.add(normalized)
+            result.append(normalized)
+    return result
+
+
 SERVER_INSTRUCTIONS = """\
 Annal is your persistent semantic memory. Memories you store survive across sessions.
 
@@ -137,7 +153,7 @@ def create_server(
     atexit.register(pool.shutdown)
 
     @mcp.tool()
-    def store_memory(project: str, content: str, tags: list[str], source: str = "") -> str:
+    def store_memory(project: str, content: str, tags: list[str] | str, source: str = "") -> str:
         """Store a piece of knowledge in a project's memory.
 
         Args:
@@ -146,6 +162,7 @@ def create_server(
             tags: Domain labels like ["billing", "checkout", "pricing"]
             source: Where this knowledge came from (file path, "session observation", etc.)
         """
+        tags = _normalize_tags(tags)
         store = pool.get_store(project)
 
         # Check for near-duplicate before storing — over-fetch so file-indexed
@@ -168,7 +185,7 @@ def create_server(
     def search_memories(
         project: str,
         query: str,
-        tags: list[str] | None = None,
+        tags: list[str] | str | None = None,
         limit: int = 5,
         mode: str = "full",
     ) -> str:
@@ -182,6 +199,7 @@ def create_server(
             mode: "full" (default) returns complete content; "probe" returns compact
                   summaries — use probe to scan relevance, then expand_memories for details
         """
+        tags = _normalize_tags(tags)
         store = pool.get_store(project)
         results = store.search(query=query, tags=tags, limit=limit)
         if not results:
