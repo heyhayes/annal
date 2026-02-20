@@ -273,3 +273,40 @@ async def test_store_memory_lowercases_and_dedupes_tags(mcp):
     # Should not contain uppercase variants or duplicated tags
     assert "Decision" not in expand_result
     assert "BILLING" not in expand_result
+
+
+@pytest.mark.asyncio
+async def test_search_suppresses_negative_scores(mcp):
+    """With a high min_score, irrelevant results should be filtered out."""
+    await _call(mcp, "store_memory", {
+        "project": "test",
+        "content": "The billing module uses Stripe for payment processing",
+        "tags": ["billing"],
+    })
+
+    # Search with a completely unrelated query and a high min_score threshold
+    result = await _call(mcp, "search_memories", {
+        "project": "test",
+        "query": "quantum physics entanglement experiments",
+        "min_score": 0.5,
+    })
+
+    assert "No matching memories found" in result
+
+
+@pytest.mark.asyncio
+async def test_search_min_score_zero_allows_positive(mcp):
+    """Default min_score=0.0 should allow results with positive similarity."""
+    await _call(mcp, "store_memory", {
+        "project": "test",
+        "content": "Apply discount on gross total before tax calculation",
+        "tags": ["billing"],
+    })
+
+    # Search with a relevant query using default min_score (0.0)
+    result = await _call(mcp, "search_memories", {
+        "project": "test",
+        "query": "discount gross total tax",
+    })
+
+    assert "Apply discount on gross total" in result
