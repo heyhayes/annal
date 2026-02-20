@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+
+{% block title %}Annal - {{ project }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>{{ project }}</h1>
+  <span class="page-count">{{ total }} memories</span>
+</div>
+
+<div class="filter-bar">
+  <div class="filter-controls">
+    <input type="hidden" name="project" value="{{ project }}">
+
+    <select name="type"
+            hx-get="/memories/table"
+            hx-target="#memory-table"
+            hx-include="[name]">
+      <option value="">All types</option>
+      <option value="agent-memory" {% if chunk_type == "agent-memory" %}selected{% endif %}>agent-memory</option>
+      <option value="file-indexed" {% if chunk_type == "file-indexed" %}selected{% endif %}>file-indexed</option>
+    </select>
+
+    <input type="text"
+           name="source"
+           value="{{ source }}"
+           placeholder="Filter by source..."
+           hx-get="/memories/table"
+           hx-target="#memory-table"
+           hx-include="[name]"
+           hx-trigger="keyup changed delay:300ms">
+
+    <input type="text"
+           name="tags"
+           value="{{ tags }}"
+           placeholder="Filter by tag..."
+           hx-get="/memories/table"
+           hx-target="#memory-table"
+           hx-include="[name]"
+           hx-trigger="keyup changed delay:300ms">
+  </div>
+
+  <div class="search-controls">
+    <input type="text"
+           name="q"
+           value="{{ q }}"
+           placeholder="Semantic search..."
+           hx-post="/search"
+           hx-target="#memory-table"
+           hx-include="[name]"
+           hx-trigger="keyup changed delay:500ms">
+  </div>
+</div>
+
+<div class="table-actions">
+  <button class="btn btn-danger"
+          id="bulk-delete-btn"
+          hx-post="/memories/bulk-delete"
+          hx-target="#memory-table"
+          hx-include="[name]"
+          hx-vals="js:{ids: [...document.querySelectorAll('.row-check:checked')].map(c => c.value).join(',')}"
+          disabled>
+    Delete selected
+  </button>
+</div>
+
+<table class="memory-table">
+  <thead>
+    <tr>
+      <th class="col-check">
+        <input type="checkbox" id="select-all"
+               onchange="document.querySelectorAll('.row-check').forEach(c => { c.checked = this.checked; }); toggleBulkBtn();">
+      </th>
+      <th class="col-content">Content</th>
+      <th class="col-source">Source</th>
+      <th class="col-tags">Tags</th>
+      <th class="col-type">Type</th>
+      <th class="col-date">Date</th>
+      <th class="col-actions"></th>
+    </tr>
+  </thead>
+  <tbody id="memory-table">
+    {% include "_table.html" %}
+  </tbody>
+</table>
+
+<div class="pagination">
+  {% if page > 1 %}
+  <a href="#"
+     class="btn btn-ghost"
+     hx-get="/memories/table?project={{ project }}&type={{ chunk_type }}&source={{ source }}&tags={{ tags }}&page={{ page - 1 }}"
+     hx-target="#memory-table">
+    &laquo; Prev
+  </a>
+  {% endif %}
+  <span class="page-info">Page {{ page }} of {{ total_pages }}</span>
+  {% if page < total_pages %}
+  <a href="#"
+     class="btn btn-ghost"
+     hx-get="/memories/table?project={{ project }}&type={{ chunk_type }}&source={{ source }}&tags={{ tags }}&page={{ page + 1 }}"
+     hx-target="#memory-table">
+    Next &raquo;
+  </a>
+  {% endif %}
+</div>
+
+<script>
+function toggleBulkBtn() {
+  const btn = document.getElementById('bulk-delete-btn');
+  const checked = document.querySelectorAll('.row-check:checked').length;
+  btn.disabled = checked === 0;
+}
+document.addEventListener('change', function(e) {
+  if (e.target.classList.contains('row-check')) toggleBulkBtn();
+});
+</script>
+{% endblock %}

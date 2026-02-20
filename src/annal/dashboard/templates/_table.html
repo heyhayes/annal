@@ -1,0 +1,38 @@
+{% for mem in memories %}
+<tr class="memory-row">
+  <td class="col-check">
+    <input type="checkbox" class="row-check" value="{{ mem.id }}" onchange="toggleBulkBtn()">
+  </td>
+  <td class="col-content">
+    <div class="content-snippet">{{ mem.content[:150] }}{% if mem.content|length > 150 %}...{% endif %}</div>
+  </td>
+  <td class="col-source">
+    <span class="source-text" title="{{ mem.source }}">{{ mem.source[:60] }}{% if mem.source|length > 60 %}...{% endif %}</span>
+  </td>
+  <td class="col-tags">
+    {% for tag in mem.tags %}
+    <span class="tag-pill">{{ tag }}</span>
+    {% endfor %}
+  </td>
+  <td class="col-type">
+    <span class="type-badge type-{{ mem.chunk_type }}">{{ mem.chunk_type }}</span>
+  </td>
+  <td class="col-date">
+    <span class="date-text">{{ mem.created_at[:10] if mem.created_at else "" }}</span>
+  </td>
+  <td class="col-actions">
+    <button class="btn btn-icon btn-delete"
+            hx-delete="/memories/{{ mem.id }}?project={{ project }}"
+            hx-target="closest tr"
+            hx-swap="outerHTML"
+            hx-confirm="Delete this memory?"
+            title="Delete">
+      &times;
+    </button>
+  </td>
+</tr>
+{% else %}
+<tr>
+  <td colspan="7" class="empty-table">No memories found.</td>
+</tr>
+{% endfor %}

@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block title %}Annal - Projects{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Projects</h1>
+</div>
+
+{% if project_stats %}
+<div class="card-grid">
+  {% for p in project_stats %}
+  <a href="/memories?project={{ p.name }}" class="project-card">
+    <div class="card-header">
+      <h2 class="card-title">{{ p.name }}</h2>
+      <span class="card-count">{{ p.total }}</span>
+    </div>
+    <div class="card-stats">
+      <div class="stat">
+        <span class="stat-value">{{ p.agent_memory }}</span>
+        <span class="stat-label">agent</span>
+      </div>
+      <div class="stat">
+        <span class="stat-value">{{ p.file_indexed }}</span>
+        <span class="stat-label">indexed</span>
+      </div>
+    </div>
+    {% if p.top_tags %}
+    <div class="card-tags">
+      {% for tag, count in p.top_tags %}
+      <span class="tag-pill">{{ tag }} <span class="tag-count">{{ count }}</span></span>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+  <div class="empty-icon">&gt;_</div>
+  <p>No projects configured yet.</p>
+  <p class="empty-hint">Use the <code>init_project</code> MCP tool to add your first project.</p>
+</div>
+{% endif %}
+{% endblock %}
