@@ -76,6 +76,15 @@
   </button>
 </div>
 
+<div hx-ext="sse" sse-connect="/events">
+  <div sse-swap="memory_stored"
+       hx-get="/memories/table"
+       hx-target="#memory-table"
+       hx-include="[name]"
+       hx-trigger="sse:memory_stored, sse:memory_deleted, sse:index_complete"
+       style="display:none"></div>
+</div>
+
 <table class="memory-table">
   <thead>
     <tr>
@@ -142,5 +151,14 @@ function confirmFilterDelete() {
   const count = document.getElementById('memory-count').textContent.split(' ')[0];
   return 'This will delete ALL ' + count + ' memories matching the current filters. This cannot be undone. Are you sure?';
 }
+
+document.body.addEventListener('sse:index_started', function() {
+  document.getElementById('activity-indicator').textContent = 'indexing\u2026';
+  document.getElementById('activity-indicator').classList.add('active');
+});
+document.body.addEventListener('sse:index_complete', function() {
+  document.getElementById('activity-indicator').textContent = '';
+  document.getElementById('activity-indicator').classList.remove('active');
+});
 </script>
 {% endblock %}

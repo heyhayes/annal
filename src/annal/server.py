@@ -10,6 +10,7 @@ import threading
 from mcp.server.fastmcp import FastMCP
 
 from annal.config import AnnalConfig, DEFAULT_CONFIG_PATH
+from annal.events import event_bus, Event
 from annal.pool import StorePool
 
 logging.basicConfig(level=logging.INFO, stream=sys.stderr)
@@ -179,6 +180,7 @@ def create_server(
             break  # first agent-memory was below threshold, no need to check worse ones
 
         mem_id = store.store(content=content, tags=tags, source=source)
+        event_bus.push(Event(type="memory_stored", project=project, detail=mem_id))
         return f"[{project}] Stored memory {mem_id}"
 
     @mcp.tool()
@@ -269,6 +271,7 @@ def create_server(
         """
         store = pool.get_store(project)
         store.delete(memory_id)
+        event_bus.push(Event(type="memory_deleted", project=project, detail=memory_id))
         return f"[{project}] Deleted memory {memory_id}"
 
     @mcp.tool()
@@ -362,9 +365,11 @@ def create_server(
         if project not in config.projects:
             return f"[{project}] No watch paths configured. Use init_project first."
 
+        event_bus.push(Event(type="index_started", project=project))
         store = pool.get_store(project)
         store.delete_by_source("file:")
         count = pool.reconcile_project(project)
+        event_bus.push(Event(type="index_complete", project=project, detail=f"{count} files"))
         return f"[{project}] Cleared old file chunks and re-indexed {count} files."
 
     return mcp

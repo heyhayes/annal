@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
+import asyncio
 import math
 from pathlib import Path
 
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, Response
+from starlette.responses import HTMLResponse, Response, StreamingResponse
 from starlette.routing import Route
 from starlette.templating import Jinja2Templates
 
 from annal.config import AnnalConfig
+from annal.events import event_bus
 from annal.pool import StorePool
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
@@ -214,6 +216,27 @@ def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
         ctx = _fetch_memories(pool, params)
         return templates.TemplateResponse(request, "_table.html", ctx)
 
+    async def events(request: Request) -> Response:
+        """SSE endpoint for live dashboard updates."""
+        q = event_bus.subscribe()
+        loop = asyncio.get_running_loop()
+
+        async def generate():
+            try:
+                while True:
+                    # Bridge from thread-safe queue to async via run_in_executor
+                    event = await loop.run_in_executor(None, q.get)
+                    yield f"event: {event.type}\ndata: {event.project}|{event.detail}\n\n"
+            except asyncio.CancelledError:
+                pass
+            finally:
+                event_bus.unsubscribe(q)
+
+        return StreamingResponse(generate(), media_type="text/event-stream", headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        })
+
     return [
         Route("/", index),
         Route("/memories", memories),
@@ -222,4 +245,5 @@ def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
         Route("/memories/bulk-delete-filter", bulk_delete_filter, methods=["POST"]),
         Route("/memories/{memory_id}", delete_memory, methods=["DELETE"]),
         Route("/search", search, methods=["POST"]),
+        Route("/events", events),
     ]

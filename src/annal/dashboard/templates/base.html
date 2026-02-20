@@ -6,6 +6,7 @@
   <title>{% block title %}Annal{% endblock %}</title>
   <link rel="stylesheet" href="/static/style.css">
   <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <script src="https://unpkg.com/htmx-ext-sse@2.2.2/sse.js"></script>
 </head>
 <body>
   <nav class="topnav">
@@ -16,6 +17,7 @@
     <div class="nav-links">
       <a href="/">projects</a>
     </div>
+    <div class="activity-indicator" id="activity-indicator"></div>
   </nav>
   <main class="container">
     {% block content %}{% endblock %}

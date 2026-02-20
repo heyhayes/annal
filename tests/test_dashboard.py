@@ -3,6 +3,7 @@ from starlette.testclient import TestClient
 
 from annal.config import AnnalConfig, ProjectConfig
 from annal.dashboard import create_dashboard_app
+from annal.events import event_bus, Event
 from annal.pool import StorePool
 
 
@@ -201,3 +202,72 @@ def test_bulk_delete_filter(dashboard_with_pool):
     assert total == 2
     for m in remaining:
         assert m["chunk_type"] == "agent-memory"
+
+
+def test_sse_endpoint_streams_events(dashboard_client):
+    """The /events SSE endpoint should stream events with correct format."""
+    import threading
+
+    import httpx
+    import uvicorn
+
+    # Use a real HTTP server to test the SSE endpoint, since the httpx
+    # ASGI transport buffers the full response and can't handle infinite streams.
+    app = dashboard_client.app
+
+    uv_config = uvicorn.Config(app, host="127.0.0.1", port=0, log_level="warning")
+    server = uvicorn.Server(uv_config)
+
+    server_started = threading.Event()
+    original_startup = server.startup
+
+    async def patched_startup(*a, **kw):
+        result = await original_startup(*a, **kw)
+        server_started.set()
+        return result
+
+    server.startup = patched_startup
+
+    def run_server():
+        import asyncio
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(server.serve())
+
+    t = threading.Thread(target=run_server, daemon=True)
+    t.start()
+    server_started.wait(timeout=5)
+
+    # Find the actual port
+    for s in server.servers:
+        for sock in s.sockets:
+            port = sock.getsockname()[1]
+            break
+
+    try:
+        with httpx.stream("GET", f"http://127.0.0.1:{port}/events", timeout=5) as response:
+            assert response.status_code == 200
+            assert "text/event-stream" in response.headers.get("content-type", "")
+
+            # Push an event so the stream yields data
+            event_bus.push(Event(type="memory_stored", project="test", detail="id123"))
+
+            for chunk in response.iter_text():
+                assert "event: memory_stored" in chunk
+                assert "data: test|id123" in chunk
+                break
+    finally:
+        server.should_exit = True
+        t.join(timeout=3)
+
+
+def test_event_bus_pub_sub():
+    """Events pushed to the bus should be received by subscribers."""
+    q = event_bus.subscribe()
+    event_bus.push(Event(type="memory_stored", project="test", detail="test memory"))
+    try:
+        received = q.get(timeout=1.0)
+        assert received.type == "memory_stored"
+        assert received.project == "test"
+    finally:
+        event_bus.unsubscribe(q)
