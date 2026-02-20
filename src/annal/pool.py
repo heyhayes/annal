@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 
 from annal.config import AnnalConfig
 from annal.store import MemoryStore
@@ -18,20 +19,22 @@ class StorePool:
         self._config = config
         self._stores: dict[str, MemoryStore] = {}
         self._watchers: dict[str, FileWatcher] = {}
+        self._lock = threading.Lock()
 
     def get_store(self, project: str) -> MemoryStore:
         """Get or create a MemoryStore for the given project."""
-        if project not in self._stores:
-            logger.info("Creating store for project '%s'", project)
-            self._stores[project] = MemoryStore(
-                data_dir=self._config.data_dir, project=project
-            )
-            # Auto-register unknown projects in config so they're discoverable
-            if project not in self._config.projects:
-                self._config.add_project(project)
-                self._config.save()
-                logger.info("Auto-registered project '%s' in config", project)
-        return self._stores[project]
+        with self._lock:
+            if project not in self._stores:
+                logger.info("Creating store for project '%s'", project)
+                self._stores[project] = MemoryStore(
+                    data_dir=self._config.data_dir, project=project
+                )
+                # Auto-register unknown projects in config so they're discoverable
+                if project not in self._config.projects:
+                    self._config.add_project(project)
+                    self._config.save()
+                    logger.info("Auto-registered project '%s' in config", project)
+            return self._stores[project]
 
     def reconcile_project(self, project: str) -> int:
         """Reconcile file indexes for a project. Returns number of files indexed."""
