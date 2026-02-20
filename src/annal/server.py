@@ -402,11 +402,8 @@ def _start_dashboard(pool: StorePool, config: AnnalConfig, port: int) -> None:
     logger.info("Dashboard available at http://127.0.0.1:%d", port)
 
 
-def main() -> None:
-    """Entry point for running the server."""
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Annal MCP server")
+def _add_serve_args(parser: "argparse.ArgumentParser") -> None:
+    """Add --transport, --config, --no-dashboard flags to a parser."""
     parser.add_argument(
         "--transport",
         choices=["stdio", "streamable-http"],
@@ -423,18 +420,55 @@ def main() -> None:
         action="store_true",
         help="Disable the dashboard web server",
     )
+
+
+def main() -> None:
+    """Entry point for running the server."""
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Annal semantic memory server")
+    # Add serve flags to top-level parser for backward compat (bare `annal --transport ...`)
+    _add_serve_args(parser)
+
+    subparsers = parser.add_subparsers(dest="command")
+
+    # serve subcommand (also works with no subcommand)
+    serve_parser = subparsers.add_parser("serve", help="Run the MCP server")
+    _add_serve_args(serve_parser)
+
+    # install subcommand
+    subparsers.add_parser("install", help="Install Annal service and configure MCP clients")
+
+    # uninstall subcommand
+    subparsers.add_parser("uninstall", help="Remove Annal service and MCP client configs")
+
     args = parser.parse_args()
 
-    config = AnnalConfig.load(args.config)
-    mcp = create_server(config_path=args.config)
+    if args.command == "install":
+        from annal.cli import install
+        print(install())
+        return
 
-    if not args.no_dashboard:
+    if args.command == "uninstall":
+        from annal.cli import uninstall
+        print(uninstall())
+        return
+
+    # Default: serve (handles both `annal serve` and bare `annal` with old flags)
+    transport = getattr(args, "transport", "stdio")
+    config_path = getattr(args, "config", DEFAULT_CONFIG_PATH)
+    no_dashboard = getattr(args, "no_dashboard", False)
+
+    config = AnnalConfig.load(config_path)
+    mcp = create_server(config_path=config_path)
+
+    if not no_dashboard:
         pool = StorePool(config)
         # In stdio mode the MCP port is free; in HTTP mode use port+1
-        dashboard_port = config.port if args.transport == "stdio" else config.port + 1
+        dashboard_port = config.port if transport == "stdio" else config.port + 1
         _start_dashboard(pool, config, port=dashboard_port)
 
-    mcp.run(transport=args.transport)
+    mcp.run(transport=transport)
 
 
 if __name__ == "__main__":
