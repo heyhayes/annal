@@ -261,6 +261,32 @@ def test_sse_endpoint_streams_events(dashboard_client):
         t.join(timeout=3)
 
 
+def test_event_bus_thread_safety():
+    """EventBus should handle concurrent subscribe/push/unsubscribe without errors."""
+    import threading
+    from annal.events import EventBus, Event
+
+    bus = EventBus()
+    errors = []
+
+    def subscriber():
+        try:
+            q = bus.subscribe()
+            for _ in range(100):
+                bus.push(Event(type="test", project="t"))
+            bus.unsubscribe(q)
+        except Exception as e:
+            errors.append(e)
+
+    threads = [threading.Thread(target=subscriber) for _ in range(10)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert errors == [], f"Thread safety errors: {errors}"
+
+
 def test_event_bus_pub_sub():
     """Events pushed to the bus should be received by subscribers."""
     q = event_bus.subscribe()

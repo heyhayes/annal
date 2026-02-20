@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import queue
+import threading
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -26,23 +27,28 @@ class EventBus:
 
     def __init__(self) -> None:
         self._queues: list[queue.Queue[Event]] = []
+        self._lock = threading.Lock()
 
     def subscribe(self) -> queue.Queue[Event]:
         """Create a new subscription queue for an SSE client."""
         q: queue.Queue[Event] = queue.Queue(maxsize=256)
-        self._queues.append(q)
+        with self._lock:
+            self._queues.append(q)
         return q
 
     def unsubscribe(self, q: queue.Queue[Event]) -> None:
         """Remove a subscription queue."""
-        try:
-            self._queues.remove(q)
-        except ValueError:
-            pass
+        with self._lock:
+            try:
+                self._queues.remove(q)
+            except ValueError:
+                pass
 
     def push(self, event: Event) -> None:
         """Push an event to all subscribers. Safe to call from any thread."""
-        for q in list(self._queues):
+        with self._lock:
+            snapshot = list(self._queues)
+        for q in snapshot:
             try:
                 q.put_nowait(event)
             except queue.Full:
