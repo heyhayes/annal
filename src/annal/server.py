@@ -40,9 +40,18 @@ Store memories when you encounter information worth preserving across sessions:
 - Important patterns or conventions in the codebase
 - Domain knowledge that took effort to discover
 
+## When to search
+Search annal at these moments — prefer probe mode to keep context lean:
+- Session start: load context for the current project and task area
+- Questions about prior work: "what did we decide about X?", "have we seen this before?"
+- Before proposing architectural changes: check for prior decisions in the same domain
+- When a bug feels familiar: search for prior root causes and fixes
+- Before starting a new feature: look for related specs, patterns, or preferences
+
 ## Searching
 Use search_memories with natural language — it uses semantic similarity, not keyword
-matching. Filter by tags to narrow results when the memory store grows large.
+matching. Use mode="probe" to scan results cheaply, then expand_memories for details.
+Filter by tags to narrow results when the memory store grows large.
 
 ## Tag conventions
 
@@ -139,19 +148,30 @@ def create_server(
         """
         store = pool.get_store(project)
 
-        # Check for near-duplicate before storing
-        existing = store.search(query=content, limit=1)
-        if existing and existing[0]["score"] > 0.95 and existing[0]["chunk_type"] == "agent-memory":
-            return (
-                f"[{project}] Skipped — similar memory already exists "
-                f"(score: {existing[0]['score']:.2f}, ID: {existing[0]['id']})"
-            )
+        # Check for near-duplicate before storing — over-fetch so file-indexed
+        # chunks at the top don't hide a real agent-memory duplicate further down
+        existing = store.search(query=content, limit=5)
+        for candidate in existing:
+            if candidate["chunk_type"] != "agent-memory":
+                continue
+            if candidate["score"] > 0.95:
+                return (
+                    f"[{project}] Skipped — similar memory already exists "
+                    f"(score: {candidate['score']:.2f}, ID: {candidate['id']})"
+                )
+            break  # first agent-memory was below threshold, no need to check worse ones
 
         mem_id = store.store(content=content, tags=tags, source=source)
         return f"[{project}] Stored memory {mem_id}"
 
     @mcp.tool()
-    def search_memories(project: str, query: str, tags: list[str] | None = None, limit: int = 5) -> str:
+    def search_memories(
+        project: str,
+        query: str,
+        tags: list[str] | None = None,
+        limit: int = 5,
+        mode: str = "full",
+    ) -> str:
         """Search project memories using natural language.
 
         Args:
@@ -159,6 +179,8 @@ def create_server(
             query: Natural language search query
             tags: Optional tag filter — only return memories with at least one of these tags
             limit: Maximum number of results (default 5)
+            mode: "full" (default) returns complete content; "probe" returns compact
+                  summaries — use probe to scan relevance, then expand_memories for details
         """
         store = pool.get_store(project)
         results = store.search(query=query, tags=tags, limit=limit)
@@ -167,12 +189,51 @@ def create_server(
 
         lines = []
         for r in results:
+            if mode == "probe":
+                # Truncate to first newline or ~150 chars, whichever is shorter
+                content = r["content"]
+                first_line = content.split("\n", 1)[0]
+                snippet = first_line[:150]
+                if len(first_line) > 150:
+                    snippet += "…"
+                # Extract date portion from ISO created_at
+                date = r["created_at"][:10] if r["created_at"] else "unknown"
+                source_label = r["source"] or "session observation"
+                lines.append(
+                    f'[{r["score"]:.2f}] ({", ".join(r["tags"])}) "{snippet}"'
+                    f"\n  Source: {source_label} | {date} | ID: {r['id']}"
+                )
+            else:
+                lines.append(
+                    f"[{r['score']:.2f}] ({', '.join(r['tags'])}) {r['content']}"
+                    + (f"\n  Source: {r['source']}" if r["source"] else "")
+                    + f"\n  ID: {r['id']}"
+                )
+        return f"[{project}] {len(results)} results:\n\n" + "\n\n".join(lines)
+
+    @mcp.tool()
+    def expand_memories(project: str, memory_ids: list[str]) -> str:
+        """Retrieve full content for specific memories by ID.
+
+        Use after a probe-mode search to fetch details for relevant results.
+
+        Args:
+            project: Project name the memories belong to
+            memory_ids: List of memory IDs to expand
+        """
+        store = pool.get_store(project)
+        results = store.get_by_ids(memory_ids)
+        if not results:
+            return f"[{project}] No memories found for the given IDs."
+
+        lines = []
+        for r in results:
             lines.append(
-                f"[{r['score']:.2f}] ({', '.join(r['tags'])}) {r['content']}"
-                + (f"\n  Source: {r['source']}" if r['source'] else "")
+                f"({', '.join(r['tags'])}) {r['content']}"
+                + (f"\n  Source: {r['source']}" if r["source"] else "")
                 + f"\n  ID: {r['id']}"
             )
-        return f"[{project}] {len(results)} results:\n\n" + "\n\n".join(lines)
+        return f"[{project}] {len(results)} memories:\n\n" + "\n\n".join(lines)
 
     @mcp.tool()
     def delete_memory(project: str, memory_id: str) -> str:
@@ -202,23 +263,47 @@ def create_server(
         return f"[{project}] Topics:\n" + "\n".join(lines)
 
     @mcp.tool()
-    def init_project(project_name: str, watch_paths: list[str] | None = None) -> str:
+    def init_project(
+        project_name: str,
+        watch_paths: list[str] | None = None,
+        watch_patterns: list[str] | None = None,
+        watch_exclude: list[str] | None = None,
+    ) -> str:
         """Initialize a new project in the Annal config.
 
         Args:
             project_name: Name for the project (used as the collection namespace)
             watch_paths: Optional list of directory paths to watch for file changes
+            watch_patterns: Optional glob patterns for files to index (default: markdown, yaml, toml, json).
+                            Replaces defaults entirely when provided.
+            watch_exclude: Optional glob patterns for paths to exclude (default: node_modules, vendor,
+                           .git, .venv, __pycache__, dist, build — matched at any depth).
+                           Replaces defaults entirely when provided.
         """
-        config.add_project(project_name, watch_paths=watch_paths)
+        config.add_project(
+            project_name,
+            watch_paths=watch_paths,
+            watch_patterns=watch_patterns,
+            watch_exclude=watch_exclude,
+        )
         config.save()
         if watch_paths:
             pool.reconcile_project(project_name)
             pool.start_watcher(project_name)
-        return f"Project '{project_name}' initialized with watch paths: {watch_paths or []}."
+        proj = config.projects[project_name]
+        return (
+            f"Project '{project_name}' initialized with "
+            f"watch paths: {proj.watch_paths}, "
+            f"patterns: {proj.watch_patterns}, "
+            f"excludes: {proj.watch_exclude}."
+        )
 
     @mcp.tool()
     def index_files(project: str) -> str:
-        """Manually trigger re-indexing of all watched files for a project.
+        """Full re-index: clears all file-indexed chunks, then re-indexes from scratch.
+
+        Use after changing watch_exclude or watch_patterns to remove stale chunks
+        from previously-included paths (e.g. vendor directories).
 
         Args:
             project: Project name to re-index
@@ -226,10 +311,39 @@ def create_server(
         if project not in config.projects:
             return f"[{project}] No watch paths configured. Use init_project first."
 
+        store = pool.get_store(project)
+        store.delete_by_source("file:")
         count = pool.reconcile_project(project)
-        return f"[{project}] Re-indexed {count} files."
+        return f"[{project}] Cleared old file chunks and re-indexed {count} files."
 
     return mcp
+
+
+def _start_dashboard(pool: StorePool, config: AnnalConfig) -> None:
+    """Start the dashboard web server on a background thread."""
+    import asyncio
+
+    import uvicorn
+
+    from annal.dashboard import create_dashboard_app
+
+    app = create_dashboard_app(pool, config)
+    uv_config = uvicorn.Config(
+        app,
+        host="127.0.0.1",
+        port=config.port,
+        log_level="warning",
+    )
+    server = uvicorn.Server(uv_config)
+
+    def _run() -> None:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(server.serve())
+
+    thread = threading.Thread(target=_run, daemon=True)
+    thread.start()
+    logger.info("Dashboard available at http://127.0.0.1:%d", config.port)
 
 
 def main() -> None:
@@ -248,9 +362,20 @@ def main() -> None:
         default=DEFAULT_CONFIG_PATH,
         help="Path to config file",
     )
+    parser.add_argument(
+        "--no-dashboard",
+        action="store_true",
+        help="Disable the dashboard web server",
+    )
     args = parser.parse_args()
 
+    config = AnnalConfig.load(args.config)
     mcp = create_server(config_path=args.config)
+
+    if not args.no_dashboard and args.transport == "stdio":
+        pool = StorePool(config)
+        _start_dashboard(pool, config)
+
     mcp.run(transport=args.transport)
 
 
