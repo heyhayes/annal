@@ -84,10 +84,24 @@ class MemoryStore:
     def delete(self, mem_id: str) -> None:
         self._collection.delete(ids=[mem_id])
 
+    def _iter_metadata(self) -> list[tuple[str, dict]]:
+        """Iterate all (id, metadata) pairs in batches to avoid SQLite variable limits."""
+        batch_size = 5000
+        total = self._collection.count()
+        pairs: list[tuple[str, dict]] = []
+        for offset in range(0, total, batch_size):
+            batch = self._collection.get(
+                include=["metadatas"],
+                limit=batch_size,
+                offset=offset,
+            )
+            for i, doc_id in enumerate(batch["ids"]):
+                pairs.append((doc_id, batch["metadatas"][i]))
+        return pairs
+
     def list_topics(self) -> dict[str, int]:
-        all_metadata = self._collection.get()["metadatas"]
         tag_counts: dict[str, int] = {}
-        for meta in all_metadata or []:
+        for _, meta in self._iter_metadata():
             tags = json.loads(meta.get("tags", "[]"))
             for tag in tags:
                 tag_counts[tag] = tag_counts.get(tag, 0) + 1
@@ -95,18 +109,17 @@ class MemoryStore:
 
     def delete_by_source(self, source_prefix: str) -> None:
         """Delete all chunks whose source starts with the given prefix."""
-        all_data = self._collection.get(include=["metadatas"])
-        ids_to_delete = []
-        for i, meta in enumerate(all_data["metadatas"] or []):
-            if meta.get("source", "").startswith(source_prefix):
-                ids_to_delete.append(all_data["ids"][i])
+        ids_to_delete = [
+            doc_id for doc_id, meta in self._iter_metadata()
+            if meta.get("source", "").startswith(source_prefix)
+        ]
         if ids_to_delete:
-            self._collection.delete(ids=ids_to_delete)
+            for i in range(0, len(ids_to_delete), 5000):
+                self._collection.delete(ids=ids_to_delete[i:i + 5000])
 
     def get_file_mtime(self, source_prefix: str) -> float | None:
         """Get the stored mtime for a file's chunks. Returns None if not found."""
-        all_data = self._collection.get(include=["metadatas"])
-        for meta in all_data["metadatas"] or []:
+        for _, meta in self._iter_metadata():
             if meta.get("source", "").startswith(source_prefix):
                 mtime = meta.get("file_mtime")
                 if mtime is not None:
