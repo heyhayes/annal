@@ -59,3 +59,92 @@ def test_store_with_source(store):
     store.store(content="Found in AGENT.md", tags=["docs"], source="AGENT.md > Overview")
     results = store.search("AGENT.md", limit=1)
     assert results[0]["source"] == "AGENT.md > Overview"
+
+
+def test_search_empty_collection(store):
+    results = store.search("anything", limit=5)
+    assert results == []
+
+
+def test_get_by_ids(store):
+    id1 = store.store(content="First memory", tags=["a"])
+    id2 = store.store(content="Second memory", tags=["b"])
+    store.store(content="Third memory", tags=["c"])
+
+    results = store.get_by_ids([id1, id2])
+    assert len(results) == 2
+    ids_returned = {r["id"] for r in results}
+    assert ids_returned == {id1, id2}
+    for r in results:
+        assert "content" in r
+        assert "tags" in r
+        assert "created_at" in r
+
+
+def test_get_by_ids_empty_list(store):
+    results = store.get_by_ids([])
+    assert results == []
+
+
+@pytest.fixture
+def store_with_data(tmp_data_dir):
+    store = MemoryStore(data_dir=tmp_data_dir, project="dashboard_test")
+    store.store("Agent memory about billing", tags=["billing"], source="session observation")
+    store.store("Agent memory about auth", tags=["auth", "decision"], source="design review")
+    store.store("# README\nProject docs here", tags=["indexed", "docs"], source="file:/tmp/project/README.md", chunk_type="file-indexed")
+    store.store("Config content", tags=["indexed", "agent-config"], source="file:/tmp/project/CLAUDE.md", chunk_type="file-indexed")
+    return store
+
+
+def test_browse_returns_paginated_results(store_with_data):
+    store = store_with_data
+    results, total = store.browse(offset=0, limit=2)
+    assert len(results) == 2
+    assert total == 4
+    r = results[0]
+    assert "id" in r
+    assert "content" in r
+    assert "tags" in r
+    assert "source" in r
+    assert "chunk_type" in r
+    assert "created_at" in r
+
+
+def test_browse_filters_by_chunk_type(store_with_data):
+    store = store_with_data
+    results, total = store.browse(chunk_type="file-indexed")
+    assert total == 2
+    for r in results:
+        assert r["chunk_type"] == "file-indexed"
+
+
+def test_browse_filters_by_source_prefix(store_with_data):
+    store = store_with_data
+    results, total = store.browse(source_prefix="file:/tmp")
+    assert total == 2
+    for r in results:
+        assert r["source"].startswith("file:/tmp")
+
+
+def test_browse_filters_by_tags(store_with_data):
+    store = store_with_data
+    results, total = store.browse(tags=["billing"])
+    assert total == 1
+    assert results[0]["tags"] == ["billing"]
+
+
+def test_browse_empty_collection(tmp_data_dir):
+    store = MemoryStore(data_dir=tmp_data_dir, project="empty_browse")
+    results, total = store.browse()
+    assert results == []
+    assert total == 0
+
+
+def test_stats_returns_breakdown(store_with_data):
+    store = store_with_data
+    stats = store.stats()
+    assert stats["total"] == 4
+    assert stats["by_type"]["agent-memory"] == 2
+    assert stats["by_type"]["file-indexed"] == 2
+    assert stats["by_tag"]["billing"] == 1
+    assert stats["by_tag"]["indexed"] == 2

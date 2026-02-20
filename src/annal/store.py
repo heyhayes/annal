@@ -47,6 +47,9 @@ class MemoryStore:
         limit: int = 5,
         tags: list[str] | None = None,
     ) -> list[dict]:
+        if self._collection.count() == 0:
+            return []
+
         # Over-fetch when filtering by tags since filtering is post-query
         limit_query = max(limit * 3, 20) if tags else limit
 
@@ -80,6 +83,25 @@ class MemoryStore:
             })
 
         return memories[:limit]
+
+    def get_by_ids(self, ids: list[str]) -> list[dict]:
+        """Retrieve full memory records by their IDs."""
+        if not ids:
+            return []
+        results = self._collection.get(ids=ids, include=["documents", "metadatas"])
+        memories = []
+        for i, mem_id in enumerate(results["ids"]):
+            meta = results["metadatas"][i]
+            mem_tags = json.loads(meta["tags"])
+            memories.append({
+                "id": mem_id,
+                "content": results["documents"][i],
+                "tags": mem_tags,
+                "source": meta.get("source", ""),
+                "chunk_type": meta.get("chunk_type", ""),
+                "created_at": meta.get("created_at", ""),
+            })
+        return memories
 
     def delete(self, mem_id: str) -> None:
         self._collection.delete(ids=[mem_id])
@@ -126,6 +148,66 @@ class MemoryStore:
                     return float(mtime)
                 return None
         return None
+
+    def browse(
+        self,
+        offset: int = 0,
+        limit: int = 50,
+        chunk_type: str | None = None,
+        source_prefix: str | None = None,
+        tags: list[str] | None = None,
+    ) -> tuple[list[dict], int]:
+        """Paginated retrieval with optional filters. Returns (results, total_matching)."""
+        if self._collection.count() == 0:
+            return [], 0
+
+        where = {"chunk_type": chunk_type} if chunk_type else None
+
+        batch_size = 5000
+        total = self._collection.count()
+        all_items: list[dict] = []
+        for batch_offset in range(0, total, batch_size):
+            batch = self._collection.get(
+                include=["documents", "metadatas"],
+                limit=batch_size,
+                offset=batch_offset,
+                where=where,
+            )
+            for i, doc_id in enumerate(batch["ids"]):
+                meta = batch["metadatas"][i]
+                mem_tags = json.loads(meta.get("tags", "[]"))
+
+                if source_prefix and not meta.get("source", "").startswith(source_prefix):
+                    continue
+                if tags and not any(t in mem_tags for t in tags):
+                    continue
+
+                all_items.append({
+                    "id": doc_id,
+                    "content": batch["documents"][i],
+                    "tags": mem_tags,
+                    "source": meta.get("source", ""),
+                    "chunk_type": meta.get("chunk_type", ""),
+                    "created_at": meta.get("created_at", ""),
+                })
+
+        filtered_total = len(all_items)
+        page = all_items[offset:offset + limit]
+        return page, filtered_total
+
+    def stats(self) -> dict:
+        """Return collection statistics: total count, type breakdown, tag distribution."""
+        by_type: dict[str, int] = {}
+        by_tag: dict[str, int] = {}
+        total = 0
+        for _, meta in self._iter_metadata():
+            total += 1
+            chunk_type = meta.get("chunk_type", "")
+            by_type[chunk_type] = by_type.get(chunk_type, 0) + 1
+            mem_tags = json.loads(meta.get("tags", "[]"))
+            for tag in mem_tags:
+                by_tag[tag] = by_tag.get(tag, 0) + 1
+        return {"total": total, "by_type": by_type, "by_tag": by_tag}
 
     def count(self) -> int:
         return self._collection.count()
