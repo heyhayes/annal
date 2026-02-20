@@ -77,3 +77,27 @@ def test_reconcile_skips_excluded_dirs(tmp_data_dir, tmp_path):
     watcher.reconcile()
 
     assert store.count() == 1
+
+
+def test_reconcile_survives_unreadable_file(tmp_data_dir, tmp_path):
+    """reconcile() should log and skip files it cannot read, not crash."""
+    good = tmp_path / "good.md"
+    good.write_text("# Good file\nThis should be indexed.\n")
+
+    bad = tmp_path / "bad.md"
+    bad.write_text("# Unreadable\n")
+    bad.chmod(0o000)
+
+    store = MemoryStore(data_dir=tmp_data_dir, project="testproject")
+    project_config = ProjectConfig(
+        watch_paths=[str(tmp_path)],
+        watch_patterns=["**/*.md"],
+    )
+
+    watcher = FileWatcher(store=store, project_config=project_config)
+    try:
+        count = watcher.reconcile()
+        assert count >= 1, "Good file should still be indexed"
+    finally:
+        # Restore permissions so tmp_path cleanup works
+        bad.chmod(0o644)

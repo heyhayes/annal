@@ -74,18 +74,27 @@ class _IndexHandler(FileSystemEventHandler):
 
     def on_modified(self, event: FileModifiedEvent) -> None:
         if not event.is_directory and self._should_index(event.src_path):
-            logger.info("File modified, re-indexing: %s", event.src_path)
-            index_file(self._store, event.src_path)
+            try:
+                logger.info("File modified, re-indexing: %s", event.src_path)
+                index_file(self._store, event.src_path)
+            except Exception:
+                logger.exception("Failed to index modified file: %s", event.src_path)
 
     def on_created(self, event: FileCreatedEvent) -> None:
         if not event.is_directory and self._should_index(event.src_path):
-            logger.info("File created, indexing: %s", event.src_path)
-            index_file(self._store, event.src_path)
+            try:
+                logger.info("File created, indexing: %s", event.src_path)
+                index_file(self._store, event.src_path)
+            except Exception:
+                logger.exception("Failed to index created file: %s", event.src_path)
 
     def on_deleted(self, event: FileDeletedEvent) -> None:
         if not event.is_directory and self._should_index(event.src_path):
-            logger.info("File deleted, removing from store: %s", event.src_path)
-            self._store.delete_by_source(f"file:{event.src_path}")
+            try:
+                logger.info("File deleted, removing from store: %s", event.src_path)
+                self._store.delete_by_source(f"file:{event.src_path}")
+            except Exception:
+                logger.exception("Failed to remove deleted file: %s", event.src_path)
 
 
 class FileWatcher:
@@ -105,20 +114,23 @@ class FileWatcher:
             for path in root.rglob("*"):
                 if path.is_dir():
                     continue
-                rel = str(path.relative_to(root))
-                if not matches_patterns(rel, self._config.watch_patterns, self._config.watch_exclude):
-                    continue
+                try:
+                    rel = str(path.relative_to(root))
+                    if not matches_patterns(rel, self._config.watch_patterns, self._config.watch_exclude):
+                        continue
 
-                file_path = str(path)
-                current_mtime = path.stat().st_mtime
-                stored_mtime = self._store.get_file_mtime(f"file:{file_path}")
+                    file_path = str(path)
+                    current_mtime = path.stat().st_mtime
+                    stored_mtime = self._store.get_file_mtime(f"file:{file_path}")
 
-                if stored_mtime is not None and stored_mtime == current_mtime:
-                    skipped += 1
-                    continue
+                    if stored_mtime is not None and stored_mtime == current_mtime:
+                        skipped += 1
+                        continue
 
-                index_file(self._store, file_path, file_mtime=current_mtime)
-                total += 1
+                    index_file(self._store, file_path, file_mtime=current_mtime)
+                    total += 1
+                except Exception:
+                    logger.exception("Failed to reconcile file: %s", path)
 
         if skipped:
             logger.info("Skipped %d unchanged files", skipped)
