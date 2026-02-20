@@ -295,6 +295,31 @@ async def test_search_suppresses_negative_scores(mcp):
 
 
 @pytest.mark.asyncio
+async def test_update_memory(mcp):
+    result = await _call(mcp, "store_memory", {
+        "project": "test",
+        "content": "Original decision about auth",
+        "tags": ["decision", "auth"],
+    })
+    mem_id = result.split("Stored memory ")[-1].strip()
+
+    update_result = await _call(mcp, "update_memory", {
+        "project": "test",
+        "memory_id": mem_id,
+        "content": "Revised decision: use JWT not sessions",
+        "tags": ["decision", "auth", "jwt"],
+    })
+    assert "Updated memory" in update_result
+
+    expanded = await _call(mcp, "expand_memories", {
+        "project": "test",
+        "memory_ids": [mem_id],
+    })
+    assert "Revised decision" in expanded
+    assert "jwt" in expanded
+
+
+@pytest.mark.asyncio
 async def test_search_min_score_zero_allows_positive(mcp):
     """Default min_score=0.0 should allow results with positive similarity."""
     await _call(mcp, "store_memory", {

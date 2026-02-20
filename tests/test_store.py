@@ -148,3 +148,27 @@ def test_stats_returns_breakdown(store_with_data):
     assert stats["by_type"]["file-indexed"] == 2
     assert stats["by_tag"]["billing"] == 1
     assert stats["by_tag"]["indexed"] == 2
+
+
+def test_update_memory_content(tmp_data_dir):
+    store = MemoryStore(data_dir=tmp_data_dir, project="update_test")
+    mem_id = store.store(content="Original content", tags=["test"])
+
+    store.update(mem_id, content="Updated content")
+
+    results = store.get_by_ids([mem_id])
+    assert len(results) == 1
+    assert results[0]["content"] == "Updated content"
+    assert results[0]["tags"] == ["test"]  # tags unchanged
+    assert results[0]["updated_at"] != ""
+
+
+def test_update_memory_tags(tmp_data_dir):
+    store = MemoryStore(data_dir=tmp_data_dir, project="update_test")
+    mem_id = store.store(content="Some content", tags=["old-tag"])
+
+    store.update(mem_id, tags=["new-tag", "extra"])
+
+    results = store.get_by_ids([mem_id])
+    assert results[0]["tags"] == ["new-tag", "extra"]
+    assert results[0]["content"] == "Some content"  # content unchanged

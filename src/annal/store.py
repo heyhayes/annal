@@ -100,11 +100,43 @@ class MemoryStore:
                 "source": meta.get("source", ""),
                 "chunk_type": meta.get("chunk_type", ""),
                 "created_at": meta.get("created_at", ""),
+                "updated_at": meta.get("updated_at", ""),
             })
         return memories
 
     def delete(self, mem_id: str) -> None:
         self._collection.delete(ids=[mem_id])
+
+    def update(
+        self,
+        mem_id: str,
+        content: str | None = None,
+        tags: list[str] | None = None,
+        source: str | None = None,
+    ) -> None:
+        """Update an existing memory's content, tags, and/or source in place."""
+        # Fetch current state
+        current = self._collection.get(ids=[mem_id], include=["documents", "metadatas"])
+        if not current["ids"]:
+            raise ValueError(f"Memory {mem_id} not found")
+
+        old_meta = current["metadatas"][0]
+        old_doc = current["documents"][0]
+
+        new_doc = content if content is not None else old_doc
+        new_meta = dict(old_meta)
+        new_meta["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+        if tags is not None:
+            new_meta["tags"] = json.dumps(tags)
+        if source is not None:
+            new_meta["source"] = source
+
+        self._collection.update(
+            ids=[mem_id],
+            documents=[new_doc],
+            metadatas=[new_meta],
+        )
 
     def delete_many(self, ids: list[str]) -> None:
         """Delete multiple memories by ID in batches."""

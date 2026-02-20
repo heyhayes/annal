@@ -272,6 +272,33 @@ def create_server(
         return f"[{project}] Deleted memory {memory_id}"
 
     @mcp.tool()
+    def update_memory(
+        project: str,
+        memory_id: str,
+        content: str | None = None,
+        tags: list[str] | str | None = None,
+        source: str | None = None,
+    ) -> str:
+        """Update an existing memory's content, tags, or source without losing its ID.
+
+        Args:
+            project: Project name the memory belongs to
+            memory_id: The ID of the memory to update
+            content: New content (omit to keep existing)
+            tags: New tags (omit to keep existing)
+            source: New source (omit to keep existing)
+        """
+        if content is None and tags is None and source is None:
+            return f"[{project}] Nothing to update — provide content, tags, or source."
+        store = pool.get_store(project)
+        normalized_tags = _normalize_tags(tags) if tags is not None else None
+        try:
+            store.update(memory_id, content=content, tags=normalized_tags, source=source)
+        except ValueError:
+            return f"[{project}] Memory {memory_id} not found."
+        return f"[{project}] Updated memory {memory_id}"
+
+    @mcp.tool()
     def list_topics(project: str) -> str:
         """List all knowledge domains (tags) in a project with their counts.
 
