@@ -319,7 +319,7 @@ def create_server(
     return mcp
 
 
-def _start_dashboard(pool: StorePool, config: AnnalConfig) -> None:
+def _start_dashboard(pool: StorePool, config: AnnalConfig, port: int) -> None:
     """Start the dashboard web server on a background thread."""
     import asyncio
 
@@ -331,7 +331,7 @@ def _start_dashboard(pool: StorePool, config: AnnalConfig) -> None:
     uv_config = uvicorn.Config(
         app,
         host="127.0.0.1",
-        port=config.port,
+        port=port,
         log_level="warning",
     )
     server = uvicorn.Server(uv_config)
@@ -343,7 +343,7 @@ def _start_dashboard(pool: StorePool, config: AnnalConfig) -> None:
 
     thread = threading.Thread(target=_run, daemon=True)
     thread.start()
-    logger.info("Dashboard available at http://127.0.0.1:%d", config.port)
+    logger.info("Dashboard available at http://127.0.0.1:%d", port)
 
 
 def main() -> None:
@@ -372,9 +372,11 @@ def main() -> None:
     config = AnnalConfig.load(args.config)
     mcp = create_server(config_path=args.config)
 
-    if not args.no_dashboard and args.transport == "stdio":
+    if not args.no_dashboard:
         pool = StorePool(config)
-        _start_dashboard(pool, config)
+        # In stdio mode the MCP port is free; in HTTP mode use port+1
+        dashboard_port = config.port if args.transport == "stdio" else config.port + 1
+        _start_dashboard(pool, config, port=dashboard_port)
 
     mcp.run(transport=args.transport)
 
