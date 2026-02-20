@@ -106,6 +106,11 @@ class MemoryStore:
     def delete(self, mem_id: str) -> None:
         self._collection.delete(ids=[mem_id])
 
+    def delete_many(self, ids: list[str]) -> None:
+        """Delete multiple memories by ID in batches."""
+        for i in range(0, len(ids), 5000):
+            self._collection.delete(ids=ids[i:i + 5000])
+
     def _iter_metadata(self) -> list[tuple[str, dict]]:
         """Iterate all (id, metadata) pairs in batches to avoid SQLite variable limits."""
         batch_size = 5000

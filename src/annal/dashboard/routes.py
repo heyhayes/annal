@@ -133,10 +133,9 @@ def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
             return HTMLResponse("Missing project or ids", status_code=400)
 
         store = pool.get_store(project)
-        for mem_id in ids_raw.split(","):
-            mem_id = mem_id.strip()
-            if mem_id:
-                store.delete(mem_id)
+        ids_to_delete = [m.strip() for m in ids_raw.split(",") if m.strip()]
+        if ids_to_delete:
+            store.delete_many(ids_to_delete)
 
         # Return updated table using current filter state from form
         tags_raw = form.get("tags", "")
@@ -199,8 +198,9 @@ def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
             source_prefix=source_prefix,
             tags=tags,
         )
-        for mem in all_matching:
-            store.delete(mem["id"])
+        ids_to_delete = [mem["id"] for mem in all_matching]
+        if ids_to_delete:
+            store.delete_many(ids_to_delete)
 
         # Return fresh table at page 1
         params = {
