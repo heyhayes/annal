@@ -194,3 +194,9 @@ def test_browse_returns_updated_at(tmp_data_dir):
     assert total == 1
     assert "updated_at" in results[0]
     assert results[0]["updated_at"] != ""
+
+
+def test_update_nonexistent_memory_raises(tmp_data_dir):
+    store = MemoryStore(data_dir=tmp_data_dir, project="update_missing")
+    with pytest.raises(ValueError, match="not found"):
+        store.update("nonexistent-id", content="Should fail")

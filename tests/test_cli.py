@@ -72,6 +72,25 @@ def test_install_skips_missing_clients(tmp_path):
     assert "config.yaml" in result
 
 
+def test_install_idempotent(fake_home):
+    """Calling install twice should not crash or duplicate config entries."""
+    with patch("annal.cli.Path.home", return_value=fake_home):
+        result1 = install(start_service=False)
+        result2 = install(start_service=False)
+
+    assert "config.yaml" in result1
+    assert "config.yaml" in result2
+
+    # MCP json should still have exactly one annal entry
+    mcp_json = fake_home / ".mcp.json"
+    data = json.loads(mcp_json.read_text())
+    assert "annal" in data["mcpServers"]
+
+    # Codex config should not have duplicate sections
+    codex = (fake_home / ".codex" / "config.toml").read_text()
+    assert codex.count("[mcp_servers.annal]") == 1
+
+
 def test_uninstall_removes_mcp_json_entry(fake_home):
     # First install
     with patch("annal.cli.Path.home", return_value=fake_home):

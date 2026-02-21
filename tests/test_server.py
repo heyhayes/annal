@@ -381,3 +381,24 @@ async def test_index_status(mcp):
     result = await _call(mcp, "index_status", {"project": "statustest"})
     assert "statustest" in result
     assert "chunks" in result.lower() or "total" in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_update_memory_nonexistent_id(mcp):
+    """update_memory with a nonexistent ID should return a not-found message."""
+    result = await _call(mcp, "update_memory", {
+        "project": "test",
+        "memory_id": "nonexistent-id-12345",
+        "content": "This should fail",
+    })
+    assert "not found" in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_update_memory_no_op(mcp):
+    """update_memory with no content, tags, or source should return a no-op message."""
+    result = await _call(mcp, "update_memory", {
+        "project": "test",
+        "memory_id": "doesnt-matter",
+    })
+    assert "nothing to update" in result.lower()
