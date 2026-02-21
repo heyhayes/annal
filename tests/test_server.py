@@ -714,3 +714,15 @@ async def test_cross_project_always_includes_primary(mcp):
     projects_found = {r["project"] for r in data["results"]}
     assert "primary" in projects_found
     assert "other" in projects_found
+
+
+@pytest.mark.asyncio
+async def test_search_with_invalid_date_returns_error(mcp):
+    """Invalid date format should return an error message, not empty results."""
+    result = await _call(mcp, "search_memories", {
+        "project": "test",
+        "query": "anything",
+        "after": "yesterday",
+    })
+    assert "Error" in result
+    assert "yesterday" in result

@@ -292,16 +292,15 @@ def test_search_before_date_only_includes_full_day(tmp_data_dir):
 
 
 def test_search_rejects_invalid_date_format(tmp_data_dir):
-    """Non-ISO-8601 date strings should not silently produce wrong results."""
+    """Non-ISO-8601 date strings should raise ValueError."""
     store = MemoryStore(data_dir=tmp_data_dir, project="date_validate")
     store.store(content="Some memory", tags=["test"])
 
-    # These should return empty results (invalid date = no valid filter = return nothing)
-    results = store.search("memory", after="yesterday")
-    assert len(results) == 0
+    with pytest.raises(ValueError, match="after.*yesterday"):
+        store.search("memory", after="yesterday")
 
-    results = store.search("memory", before="not-a-date")
-    assert len(results) == 0
+    with pytest.raises(ValueError, match="before.*not-a-date"):
+        store.search("memory", before="not-a-date")
 
 
 def test_search_json_empty_results(tmp_data_dir):

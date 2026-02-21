@@ -269,7 +269,10 @@ def create_server(
         all_results = []
         for proj_name in search_projects:
             store = pool.get_store(proj_name)
-            proj_results = store.search(query=query, tags=tags, limit=limit, after=after, before=before)
+            try:
+                proj_results = store.search(query=query, tags=tags, limit=limit, after=after, before=before)
+            except ValueError as e:
+                return f"[{project}] Error: {e}"
             for r in proj_results:
                 r["project"] = proj_name
             all_results.extend(proj_results)

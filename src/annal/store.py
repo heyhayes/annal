@@ -112,17 +112,19 @@ class MemoryStore:
         after: str | None = None,
         before: str | None = None,
     ) -> list[dict]:
+        if after:
+            normalized = _normalize_date_bound(after, end_of_day=False)
+            if normalized is None:
+                raise ValueError(f"Invalid date format for 'after': expected ISO 8601, got '{after}'")
+            after = normalized
+        if before:
+            normalized = _normalize_date_bound(before, end_of_day=True)
+            if normalized is None:
+                raise ValueError(f"Invalid date format for 'before': expected ISO 8601, got '{before}'")
+            before = normalized
+
         if self._collection.count() == 0:
             return []
-
-        if after:
-            after = _normalize_date_bound(after, end_of_day=False)
-            if after is None:
-                return []
-        if before:
-            before = _normalize_date_bound(before, end_of_day=True)
-            if before is None:
-                return []
 
         # Over-fetch when filtering post-query (tags or temporal)
         needs_overfetch = tags or after or before
