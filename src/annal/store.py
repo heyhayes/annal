@@ -9,6 +9,17 @@ from datetime import datetime, timezone
 import chromadb
 
 
+def _normalize_date_bound(value: str, end_of_day: bool) -> str:
+    """Normalize a date-only string to include time for correct comparison.
+
+    If value already contains 'T' (is a datetime), return as-is.
+    Otherwise append T23:59:59 (for before) or T00:00:00 (for after).
+    """
+    if "T" in value:
+        return value
+    return value + ("T23:59:59" if end_of_day else "T00:00:00")
+
+
 class MemoryStore:
     def __init__(self, data_dir: str, project: str) -> None:
         self._client = chromadb.PersistentClient(path=data_dir)
@@ -51,6 +62,11 @@ class MemoryStore:
     ) -> list[dict]:
         if self._collection.count() == 0:
             return []
+
+        if after:
+            after = _normalize_date_bound(after, end_of_day=False)
+        if before:
+            before = _normalize_date_bound(before, end_of_day=True)
 
         # Over-fetch when filtering post-query (tags or temporal)
         needs_overfetch = tags or after or before

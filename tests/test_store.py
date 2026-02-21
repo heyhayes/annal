@@ -248,3 +248,24 @@ def test_search_with_after_and_before(tmp_data_dir):
 
     results = store.search("Memory", after=yesterday, before=tomorrow)
     assert len(results) == 1
+
+
+def test_search_before_date_only_includes_full_day(tmp_data_dir):
+    """before='2026-02-21' should include memories created on 2026-02-21."""
+    from unittest.mock import patch
+    from datetime import datetime, timezone
+
+    store = MemoryStore(data_dir=tmp_data_dir, project="date_edge")
+    # Store a memory with a known timestamp mid-day
+    with patch("annal.store.datetime") as mock_dt:
+        mock_dt.now.return_value = datetime(2026, 2, 21, 14, 30, 0, tzinfo=timezone.utc)
+        mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
+        store.store(content="Created on Feb 21 afternoon", tags=["test"])
+
+    # before='2026-02-21' (date only) should include it
+    results = store.search("Feb 21", before="2026-02-21")
+    assert len(results) == 1
+
+    # after='2026-02-21' (date only) should also include it
+    results = store.search("Feb 21", after="2026-02-21")
+    assert len(results) == 1
