@@ -54,26 +54,19 @@ Compiled from the initial spike. Items marked with [field] are things to validat
 - ~~Temporal filtering~~ — `after`/`before` ISO 8601 date params on `search_memories`, post-query filtering on `created_at`.
 - ~~Structured JSON output~~ — `output="json"` param on `search_memories` and `expand_memories`.
 
-## From spike 4 code review (remaining)
+## Shipped (spike 6 — 2026-02-21)
 
-- `_index_started` / `_last_reconcile` read without locks — written by the reconcile thread, read by `index_status`. Atomic under GIL but inconsistent with the spike's thread-safety-by-contract goal. P2.
-- `config.save()` under `_lock` — YAML serialization + file I/O while holding the pool lock. Could block other threads if filesystem is slow. Move save outside the lock. P3.
-- `browse()` loads entire collection — every page request fetches all chunks into memory, then slices. Known limitation (noted as non-goal in spike 4 design) but problematic for kubernetes-scale projects on the dashboard. P2.
-
-## From spike 5 code review
-
-- `before` date filter loses last day with date-only strings — `"2026-02-28T..." > "2026-02-28"` lexicographically, so date-only `before` values exclude the entire last day. Fix: normalize date-only inputs (append `T23:59:59` to `before`, `T00:00:00` to `after`). P1.
-- Dual `AnnalConfig` — `main()` creates one config, `create_server()` loads another from same path. `init_project` mutates the closure config but the dashboard's reference never sees new projects. Not a crash, but a drift source. P2.
-- `_startup_reconcile` skips index lock — calls synchronous `reconcile_project()` without acquiring the per-project index lock. If `init_project`/`index_files` is called during startup, two reconciliations can race on the same project. P2.
-
-## From spike 5 test coverage review
-
-- No invalid-input tests for temporal date formats — `after="yesterday"` silently does a string comparison with nonsensical results. P2.
-- Empty-results JSON path untested — `search_memories` with `output="json"` on no results returns a specific `empty_json` structure but has no test. P2.
-- Tags + temporal filters untested in combination — both are post-query filters in the same loop, composition never verified. P3.
-- Over-fetch strategy untested at scale — tests store 1-2 memories; the `limit * 3` over-fetch for filtered queries is never exercised meaningfully. P3.
-- Heading context test too loose — checks `startswith("doc.md")` not the full heading path format. P3.
-- No concurrent test for `_get_index_lock` — identity tests are single-threaded, the race guard is unexercised. P3.
+- ~~`annal install` writes CLAUDE.md instructions and post-commit hook~~ — install enhancements from spike 5 uncommitted work
+- ~~`before` date filter loses last day~~ — normalize date-only inputs (`T23:59:59`/`T00:00:00`)
+- ~~Dual `AnnalConfig`~~ — `create_server()` accepts optional `config` param, shares instance with `main()`
+- ~~`_startup_reconcile` skips index lock~~ — switched to `reconcile_project_async` which acquires lock
+- ~~`_index_started` / `_last_reconcile` reads without locks~~ — all reads/writes now protected by `self._lock`
+- ~~`config.save()` under `_lock`~~ — moved save outside lock, I/O no longer blocks pool
+- ~~`browse()` loads entire collection~~ — fast path uses ChromaDB `offset`/`limit` for unfiltered queries
+- ~~Invalid date format validation~~ — ISO 8601 regex, return empty on invalid input
+- ~~Test coverage gaps~~ — combined filters, overfetch, heading path, concurrent lock, empty JSON
+- ~~Fuzzy tag matching~~ — semantic similarity expands tag filters via ONNX embeddings (0.75 threshold)
+- ~~Cross-project search~~ — `projects` param on `search_memories` fans out across collections, merges by score
 
 ## Parked
 
@@ -94,7 +87,7 @@ Compiled from the initial spike. Items marked with [field] are things to validat
 
 ## Retrieval quality
 
-- Fuzzy tag matching — tag filtering currently requires exact string matches, which means `auth` won't find memories tagged `authentication`. Use embedding similarity on tag strings at query time to expand filters to semantically equivalent tags (e.g. embed `"auth"`, compare against all known tags from `list_topics`, include anything above a similarity threshold). Local ONNX embeddings make the extra call negligible. Addresses the fundamental problem that LLMs will never converge on one exact tag string. P2.
+- ~~Fuzzy tag matching~~ — shipped in spike 6: semantic similarity expands tag filters via ONNX embeddings
 - Type tag validation on store — the type tags (`memory`, `decision`, `pattern`, `bug`, `spec`, `preference`) are a fixed vocabulary. Soft-reject unknown type tags at store time with a suggestion ("did you mean `decision`?") to prevent drift. Domain tags remain free-form. P3.
 - Hybrid search — combine vector similarity with full-text search (BM25 or similar) for better recall. Vector search misses exact keyword matches; full-text misses semantic similarity. Fusing both (reciprocal rank fusion or similar) would improve retrieval without adding infrastructure.
 - [field] Tune the dedup threshold — currently 0.95 cosine similarity. Might be too aggressive (rejecting distinct memories) or too loose (allowing near-duplicates). Needs real-world data to calibrate.
@@ -149,7 +142,7 @@ Compiled from the initial spike. Items marked with [field] are things to validat
 - [field] Memory isolation between agents — the tag conventions (agent:role-name) provide soft isolation. Is that sufficient or do agents pollute each other's search results?
 - ~~Store pool thread safety~~ — fixed in spike 4: `threading.Lock` on `_stores` dict
 - Reconcile creates throwaway FileWatcher — `pool.reconcile_project` instantiates a full FileWatcher just to call `.reconcile()`, then discards it. `start_watcher` then creates another one. The reconcile logic could be a standalone function or live on the pool directly.
-- Cross-project search — allow agents to search across multiple project collections so experience from one codebase can inform work in another. A BA agent who learned domain patterns in project X should be able to draw on that knowledge in project Y. Fan-out approach: query all (or specified) project collections in parallel, merge results by similarity score. Simpler than agent-scoped collections because agents don't need to decide at storage time whether knowledge is "project-specific" or "portable." Could add an optional `projects` parameter to `search_memories` (list of project names, or `"*"` for all).
+- ~~Cross-project search~~ — shipped in spike 6: `projects` param on `search_memories` fans out across collections
 
 ## From spike 3 code reviews
 

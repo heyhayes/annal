@@ -155,7 +155,7 @@ Every tool takes a `project` parameter. Use the directory name of the codebase y
 
 `store_memory` — Store knowledge with tags and source attribution. Near-duplicates (>95% similarity) are automatically skipped.
 
-`search_memories` — Natural language search with optional tag filtering and similarity scores. Supports `mode="probe"` for compact summaries (saves context window) and `mode="full"` for complete content. Optional `min_score` filter suppresses low-relevance noise.
+`search_memories` — Natural language search with optional tag filtering and similarity scores. Supports `mode="probe"` for compact summaries (saves context window) and `mode="full"` for complete content. Optional `min_score` filter suppresses low-relevance noise. Tags use fuzzy matching (semantic similarity) so `tags=["auth"]` finds memories tagged `authentication`. Optional `projects` parameter enables cross-project search.
 
 `expand_memories` — Retrieve full content for specific memory IDs. Use after a probe search to fetch details for relevant results.
 
@@ -251,11 +251,14 @@ Core memory store, semantic search, file indexing, MCP server, web dashboard, on
 ### 0.2.0 — Operational Readiness (shipped)
 Async indexing, thread safety, index_status diagnostics, mtime cache performance, optional file watching.
 
-### 0.3.0 — Search & Retrieval (next)
-Temporal filtering, source/path scoping, cross-project search, bulk operations, structured JSON output.
+### 0.3.0 — Search & Retrieval (shipped)
+Temporal filtering, structured JSON output, heading context in embeddings.
+
+### 0.4.0 — Bug Sweep + Features (shipped)
+Six bug fixes (date filter, dual config, startup lock, pool lock safety, browse pagination, config I/O under lock). Fuzzy tag matching via ONNX embeddings. Cross-project search with fan-out and score-based merge.
 
 ### Future
-Memory relationships and supersession. Proactive context injection. Hybrid search (vector + full-text). Automated git history indexing.
+Memory relationships and supersession. Proactive context injection. Hybrid search (vector + full-text). CLI subcommands. Import/export.
 
 ## Development
 
