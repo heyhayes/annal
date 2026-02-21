@@ -162,13 +162,21 @@ def create_server(
             try:
                 logger.info("Reconciling project '%s'...", project_name)
                 event_bus.push(Event(type="index_started", project=project_name))
-                count = pool.reconcile_project(project_name)
-                event_bus.push(Event(type="index_complete", project=project_name, detail=f"{count} files"))
-                pool.start_watcher(project_name)
+
+                def _make_complete_callback(pname: str):
+                    def on_complete(count: int) -> None:
+                        event_bus.push(Event(type="index_complete", project=pname, detail=f"{count} files"))
+                        pool.start_watcher(pname)
+                    return on_complete
+
+                pool.reconcile_project_async(
+                    project_name,
+                    on_complete=_make_complete_callback(project_name),
+                )
             except Exception:
                 logger.exception("Startup reconciliation failed for project '%s'", project_name)
                 event_bus.push(Event(type="index_failed", project=project_name, detail="startup reconciliation failed"))
-        logger.info("Startup reconciliation complete")
+        logger.info("Startup reconciliation dispatched")
 
     threading.Thread(target=_startup_reconcile, daemon=True).start()
 
