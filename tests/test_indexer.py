@@ -132,3 +132,18 @@ def test_heading_context_uses_full_path(tmp_data_dir, tmp_path):
     assert len(backend_chunk) > 0
     # Content should start with the full heading path
     assert backend_chunk[0]["content"].startswith("doc.md > Design > Backend")
+
+
+def test_chunk_markdown_skips_empty_parent_headings():
+    """Headings with no body (only sub-headings) should not produce chunks."""
+    content = """## Parent
+### Child
+Child body text here.
+"""
+    chunks = chunk_markdown(content, "test.md")
+    # Only the child should produce a chunk, not the empty parent
+    assert len(chunks) == 1
+    assert "Child body text here" in chunks[0]["content"]
+    # No chunk should have just "Parent" as its content
+    for chunk in chunks:
+        assert chunk["content"] != "Parent"

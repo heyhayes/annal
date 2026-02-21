@@ -17,8 +17,6 @@ def chunk_markdown(content: str, filename: str) -> list[dict]:
     heading_levels: list[int] = []
     current_heading = filename
 
-    last_heading_text = ""
-
     for line in lines:
         heading_match = re.match(r"^(#{1,6})\s+(.+)$", line)
         if heading_match:
@@ -26,14 +24,10 @@ def chunk_markdown(content: str, filename: str) -> list[dict]:
             text = "\n".join(current_content).strip()
             if text:
                 chunks.append({"heading": current_heading, "content": text})
-            elif last_heading_text:
-                # Heading-only section — use heading text as content
-                chunks.append({"heading": current_heading, "content": last_heading_text})
             current_content = []
 
             level = len(heading_match.group(1))
             heading_text = heading_match.group(2).strip()
-            last_heading_text = heading_text
 
             # Update heading stack — pop headings at same or deeper level
             while heading_levels and heading_levels[-1] >= level:
@@ -56,8 +50,6 @@ def chunk_markdown(content: str, filename: str) -> list[dict]:
     text = "\n".join(current_content).strip()
     if text:
         chunks.append({"heading": current_heading, "content": text})
-    elif last_heading_text:
-        chunks.append({"heading": current_heading, "content": last_heading_text})
 
     return chunks
 
