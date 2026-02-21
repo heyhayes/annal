@@ -57,10 +57,11 @@ class StorePool:
         proj_config = self._config.projects[project]
         watcher = FileWatcher(store=store, project_config=proj_config)
         count = watcher.reconcile()
-        self._last_reconcile[project] = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "file_count": count,
-        }
+        with self._lock:
+            self._last_reconcile[project] = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "file_count": count,
+            }
         logger.info("Reconciled %d files for project '%s'", count, project)
         return count
 
@@ -78,7 +79,8 @@ class StorePool:
                 logger.info("Indexing already in progress for '%s', waiting", project)
                 lock.acquire()
             try:
-                self._index_started[project] = datetime.now(timezone.utc)
+                with self._lock:
+                    self._index_started[project] = datetime.now(timezone.utc)
                 if project not in self._config.projects:
                     return
                 store = self.get_store(project)
@@ -87,10 +89,11 @@ class StorePool:
                 proj_config = self._config.projects[project]
                 watcher = FileWatcher(store=store, project_config=proj_config)
                 count = watcher.reconcile(progress_callback=on_progress)
-                self._last_reconcile[project] = {
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "file_count": count,
-                }
+                with self._lock:
+                    self._last_reconcile[project] = {
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "file_count": count,
+                    }
                 logger.info("Reconciled %d files for project '%s'", count, project)
                 if on_complete:
                     on_complete(count)
@@ -100,7 +103,8 @@ class StorePool:
                     type="index_failed", project=project, detail=str(exc)
                 ))
             finally:
-                self._index_started.pop(project, None)
+                with self._lock:
+                    self._index_started.pop(project, None)
                 lock.release()
 
         thread = threading.Thread(target=_run, daemon=True)
@@ -117,11 +121,13 @@ class StorePool:
 
     def get_last_reconcile(self, project: str) -> dict | None:
         """Get the last reconcile info for a project."""
-        return self._last_reconcile.get(project)
+        with self._lock:
+            return self._last_reconcile.get(project)
 
     def get_index_started(self, project: str) -> datetime | None:
         """Get the start time of the current indexing run, or None if idle."""
-        return self._index_started.get(project)
+        with self._lock:
+            return self._index_started.get(project)
 
     def start_watcher(self, project: str) -> None:
         """Start a file watcher for the given project (skipped if watch=false)."""
