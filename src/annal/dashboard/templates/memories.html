@@ -76,14 +76,12 @@
   </button>
 </div>
 
-<div hx-ext="sse" sse-connect="/events">
-  <div sse-swap="memory_stored"
-       hx-get="/memories/table"
-       hx-target="#memory-table"
-       hx-include="[name]"
-       hx-trigger="sse:memory_stored, sse:memory_deleted, sse:index_complete"
-       style="display:none"></div>
-</div>
+<div hx-ext="sse" sse-connect="/events"
+     hx-trigger="sse:memory_stored, sse:memory_deleted, sse:index_complete"
+     hx-get="/memories/table"
+     hx-target="#memory-table"
+     hx-include="[name]"
+     style="display:none"></div>
 
 <table class="memory-table">
   <thead>
