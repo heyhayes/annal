@@ -26,7 +26,8 @@ def server_env(tmp_data_dir, tmp_config_path, tmp_path):
 
 @pytest.fixture
 def mcp(server_env):
-    return create_server(config_path=server_env["config_path"])
+    mcp, _pool = create_server(config_path=server_env["config_path"])
+    return mcp
 
 
 async def _call(mcp, name: str, args: dict) -> str:
@@ -38,13 +39,34 @@ async def _call(mcp, name: str, args: dict) -> str:
 
 
 def test_create_server(server_env):
-    mcp = create_server(config_path=server_env["config_path"])
+    mcp, pool = create_server(config_path=server_env["config_path"])
     assert mcp is not None
     assert mcp.name == "annal"
 
 
+def test_create_server_returns_pool(server_env):
+    """create_server should return both mcp and pool."""
+    result = create_server(config_path=server_env["config_path"])
+    assert isinstance(result, tuple)
+    mcp, pool = result
+    assert mcp.name == "annal"
+    assert pool is not None
+
+
+def test_create_server_accepts_external_pool(server_env):
+    """create_server should use a provided pool instead of creating its own."""
+    from annal.pool import StorePool
+    config = AnnalConfig.load(server_env["config_path"])
+    external_pool = StorePool(config)
+    mcp, returned_pool = create_server(
+        config_path=server_env["config_path"],
+        pool=external_pool,
+    )
+    assert returned_pool is external_pool
+
+
 def test_server_has_instructions(server_env):
-    mcp = create_server(config_path=server_env["config_path"])
+    mcp, _pool = create_server(config_path=server_env["config_path"])
     assert mcp.instructions == SERVER_INSTRUCTIONS
 
 
@@ -180,7 +202,7 @@ async def test_search_on_empty_project(mcp):
 
 @pytest.mark.asyncio
 async def test_init_project_with_custom_excludes(server_env):
-    mcp = create_server(config_path=server_env["config_path"])
+    mcp, _pool = create_server(config_path=server_env["config_path"])
     result = await _call(mcp, "init_project", {
         "project_name": "customproj",
         "watch_paths": [server_env["watch_dir"]],
@@ -199,7 +221,7 @@ async def test_index_files_clears_stale_chunks(server_env):
     """index_files should remove old file-indexed chunks before re-indexing."""
     import time
 
-    mcp = create_server(config_path=server_env["config_path"])
+    mcp, _pool = create_server(config_path=server_env["config_path"])
     watch_dir = server_env["watch_dir"]
 
     # Init project and index files
@@ -346,7 +368,7 @@ async def test_search_min_score_zero_allows_positive(mcp):
 @pytest.mark.asyncio
 async def test_init_project_returns_immediately(server_env):
     """init_project should return immediately with indexing message."""
-    mcp = create_server(config_path=server_env["config_path"])
+    mcp, _pool = create_server(config_path=server_env["config_path"])
     result = await _call(mcp, "init_project", {
         "project_name": "asyncinit",
         "watch_paths": [server_env["watch_dir"]],
@@ -359,7 +381,7 @@ async def test_index_files_returns_immediately(server_env):
     """index_files should return immediately with progress message."""
     import time
 
-    mcp = create_server(config_path=server_env["config_path"])
+    mcp, _pool = create_server(config_path=server_env["config_path"])
     await _call(mcp, "init_project", {
         "project_name": "asyncidx",
         "watch_paths": [server_env["watch_dir"]],

@@ -128,7 +128,8 @@ review, and QA. Each role should verify against prior decisions before proceedin
 
 def create_server(
     config_path: str = DEFAULT_CONFIG_PATH,
-) -> FastMCP:
+    pool: StorePool | None = None,
+) -> tuple[FastMCP, StorePool]:
     """Create and configure the Annal MCP server."""
     config = AnnalConfig.load(config_path)
 
@@ -139,7 +140,8 @@ def create_server(
         port=config.port,
     )
 
-    pool = StorePool(config)
+    if pool is None:
+        pool = StorePool(config)
 
     # Reconcile and start watchers in a background thread so the HTTP
     # server can start accepting connections immediately
@@ -439,7 +441,7 @@ def create_server(
             lines.append("  Last reconcile: never")
         return "\n".join(lines)
 
-    return mcp
+    return mcp, pool
 
 
 def _start_dashboard(pool: StorePool, config: AnnalConfig, port: int) -> None:
@@ -527,10 +529,10 @@ def main() -> None:
     no_dashboard = getattr(args, "no_dashboard", False)
 
     config = AnnalConfig.load(config_path)
-    mcp = create_server(config_path=config_path)
+    pool = StorePool(config)
+    mcp, _ = create_server(config_path=config_path, pool=pool)
 
     if not no_dashboard:
-        pool = StorePool(config)
         # In stdio mode the MCP port is free; in HTTP mode use port+1
         dashboard_port = config.port if transport == "stdio" else config.port + 1
         _start_dashboard(pool, config, port=dashboard_port)
