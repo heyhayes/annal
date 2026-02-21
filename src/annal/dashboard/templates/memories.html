@@ -6,6 +6,7 @@
 <div class="page-header">
   <h1>{{ project }}</h1>
   <span class="page-count" id="memory-count">{{ total }} memories</span>
+  <span id="activity-indicator"></span>
 </div>
 
 <div class="filter-bar">
@@ -151,12 +152,16 @@ function confirmFilterDelete() {
 }
 
 document.body.addEventListener('sse:index_started', function() {
-  document.getElementById('activity-indicator').textContent = 'indexing\u2026';
-  document.getElementById('activity-indicator').classList.add('active');
+  var el = document.getElementById('activity-indicator');
+  if (el) { el.textContent = 'indexing\u2026'; el.className = 'active'; }
 });
 document.body.addEventListener('sse:index_complete', function() {
-  document.getElementById('activity-indicator').textContent = '';
-  document.getElementById('activity-indicator').classList.remove('active');
+  var el = document.getElementById('activity-indicator');
+  if (el) { el.textContent = ''; el.className = ''; }
+});
+document.body.addEventListener('sse:index_failed', function() {
+  var el = document.getElementById('activity-indicator');
+  if (el) { el.textContent = 'index failed'; el.className = 'error'; }
 });
 </script>
 {% endblock %}
