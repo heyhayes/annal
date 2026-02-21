@@ -234,12 +234,42 @@ class MemoryStore:
         if self._collection.count() == 0:
             return [], 0
 
+        has_post_filters = bool(source_prefix or tags)
         where = {"chunk_type": chunk_type} if chunk_type else None
 
+        if not has_post_filters:
+            # Fast path: let ChromaDB handle offset/limit directly
+            total = self._collection.count()
+            if where:
+                # ChromaDB doesn't expose a filtered count, so we count manually
+                all_filtered = self._collection.get(include=["metadatas"], where=where)
+                total = len(all_filtered["ids"])
+
+            batch = self._collection.get(
+                include=["documents", "metadatas"],
+                limit=limit,
+                offset=offset,
+                where=where,
+            )
+            results = []
+            for i, doc_id in enumerate(batch["ids"]):
+                meta = batch["metadatas"][i]
+                results.append({
+                    "id": doc_id,
+                    "content": batch["documents"][i],
+                    "tags": json.loads(meta.get("tags", "[]")),
+                    "source": meta.get("source", ""),
+                    "chunk_type": meta.get("chunk_type", ""),
+                    "created_at": meta.get("created_at", ""),
+                    "updated_at": meta.get("updated_at", ""),
+                })
+            return results, total
+
+        # Slow path: post-query filtering requires scanning
         batch_size = 5000
-        total = self._collection.count()
+        total_docs = self._collection.count()
         all_items: list[dict] = []
-        for batch_offset in range(0, total, batch_size):
+        for batch_offset in range(0, total_docs, batch_size):
             batch = self._collection.get(
                 include=["documents", "metadatas"],
                 limit=batch_size,

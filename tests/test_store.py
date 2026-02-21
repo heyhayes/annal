@@ -250,6 +250,26 @@ def test_search_with_after_and_before(tmp_data_dir):
     assert len(results) == 1
 
 
+def test_browse_offset_limit_pages_correctly(tmp_data_dir):
+    """browse should return correct pages using offset and limit."""
+    store = MemoryStore(data_dir=tmp_data_dir, project="paginate")
+    for i in range(10):
+        store.store(content=f"Memory number {i}", tags=["test"])
+
+    page1, total = store.browse(offset=0, limit=3)
+    assert len(page1) == 3
+    assert total == 10
+
+    page2, total = store.browse(offset=3, limit=3)
+    assert len(page2) == 3
+    assert total == 10
+
+    # Pages should have different items
+    ids1 = {r["id"] for r in page1}
+    ids2 = {r["id"] for r in page2}
+    assert ids1.isdisjoint(ids2)
+
+
 def test_search_before_date_only_includes_full_day(tmp_data_dir):
     """before='2026-02-21' should include memories created on 2026-02-21."""
     from unittest.mock import patch
