@@ -172,3 +172,25 @@ def test_update_memory_tags(tmp_data_dir):
     results = store.get_by_ids([mem_id])
     assert results[0]["tags"] == ["new-tag", "extra"]
     assert results[0]["content"] == "Some content"  # content unchanged
+
+
+def test_search_returns_updated_at(tmp_data_dir):
+    store = MemoryStore(data_dir=tmp_data_dir, project="updated_at_search")
+    mem_id = store.store(content="Will be updated", tags=["test"])
+    store.update(mem_id, content="Updated content")
+
+    results = store.search("Updated content", limit=1)
+    assert len(results) == 1
+    assert "updated_at" in results[0]
+    assert results[0]["updated_at"] != ""
+
+
+def test_browse_returns_updated_at(tmp_data_dir):
+    store = MemoryStore(data_dir=tmp_data_dir, project="updated_at_browse")
+    mem_id = store.store(content="Will be updated", tags=["test"])
+    store.update(mem_id, content="Updated content")
+
+    results, total = store.browse()
+    assert total == 1
+    assert "updated_at" in results[0]
+    assert results[0]["updated_at"] != ""

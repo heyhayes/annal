@@ -80,6 +80,7 @@ class MemoryStore:
                 "chunk_type": meta.get("chunk_type", ""),
                 "score": score,
                 "created_at": meta.get("created_at", ""),
+                "updated_at": meta.get("updated_at", ""),
             })
 
         return memories[:limit]
@@ -226,6 +227,7 @@ class MemoryStore:
                     "source": meta.get("source", ""),
                     "chunk_type": meta.get("chunk_type", ""),
                     "created_at": meta.get("created_at", ""),
+                    "updated_at": meta.get("updated_at", ""),
                 })
 
         filtered_total = len(all_items)
