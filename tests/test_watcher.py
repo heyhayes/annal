@@ -61,10 +61,10 @@ def test_reconcile_skips_excluded_dirs(tmp_data_dir, tmp_path):
     # Create a file in an excluded directory
     excluded = tmp_path / "node_modules" / "pkg"
     excluded.mkdir(parents=True)
-    (excluded / "README.md").write_text("# Should be ignored\n")
+    (excluded / "README.md").write_text("# Ignored\nThis lives in node_modules.\n")
 
     # And a non-excluded file
-    (tmp_path / "docs.md").write_text("# Should be indexed\n")
+    (tmp_path / "docs.md").write_text("# Docs\nThis should be indexed.\n")
 
     store = make_store(tmp_data_dir,"testproject")
     project_config = ProjectConfig(
