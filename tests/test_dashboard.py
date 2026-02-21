@@ -287,6 +287,14 @@ def test_event_bus_thread_safety():
     assert errors == [], f"Thread safety errors: {errors}"
 
 
+def test_index_page_has_sse_connection(dashboard_client):
+    """The index page should include SSE connection for live updates."""
+    response = dashboard_client.get("/")
+    assert response.status_code == 200
+    html = response.text
+    assert "sse-connect" in html or "events" in html
+
+
 def test_event_bus_pub_sub():
     """Events pushed to the bus should be received by subscribers."""
     q = event_bus.subscribe()

@@ -7,12 +7,15 @@
   <h1>Projects</h1>
 </div>
 
+<div hx-ext="sse" sse-connect="/events" style="display:none"></div>
+
 {% if project_stats %}
 <div class="card-grid">
   {% for p in project_stats %}
-  <a href="/memories?project={{ p.name }}" class="project-card">
+  <a href="/memories?project={{ p.name }}" class="project-card" id="card-{{ p.name }}">
     <div class="card-header">
       <h2 class="card-title">{{ p.name }}</h2>
+      <span class="indexing-badge" id="indexing-{{ p.name }}" style="display:none">indexing…</span>
       <span class="card-count">{{ p.total }}</span>
     </div>
     <div class="card-stats">
@@ -42,4 +45,24 @@
   <p class="empty-hint">Use the <code>init_project</code> MCP tool to add your first project.</p>
 </div>
 {% endif %}
+
+<script>
+document.body.addEventListener('sse:index_started', function(e) {
+  var project = e.detail.value.split('|')[0];
+  var badge = document.getElementById('indexing-' + project);
+  if (badge) { badge.style.display = 'inline'; badge.textContent = 'indexing…'; }
+});
+document.body.addEventListener('sse:index_progress', function(e) {
+  var parts = e.detail.value.split('|');
+  var project = parts[0];
+  var detail = parts[1] || '';
+  var badge = document.getElementById('indexing-' + project);
+  if (badge) { badge.style.display = 'inline'; badge.textContent = detail; }
+});
+document.body.addEventListener('sse:index_complete', function(e) {
+  var project = e.detail.value.split('|')[0];
+  var badge = document.getElementById('indexing-' + project);
+  if (badge) { badge.style.display = 'none'; }
+});
+</script>
 {% endblock %}
