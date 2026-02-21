@@ -400,3 +400,18 @@ def test_fuzzy_tag_in_browse(tmp_data_dir):
     results, total = store.browse(tags=["auth"])
     assert total == 1
     assert "Auth" in results[0]["content"]
+
+
+def test_search_across_projects(tmp_data_dir):
+    """Searching across multiple projects returns results from each."""
+    store_a = MemoryStore(data_dir=tmp_data_dir, project="project_a")
+    store_b = MemoryStore(data_dir=tmp_data_dir, project="project_b")
+
+    store_a.store(content="Auth uses JWT in project A", tags=["auth"])
+    store_b.store(content="Auth uses OAuth in project B", tags=["auth"])
+
+    # Search each individually
+    results_a = store_a.search("auth", limit=5)
+    results_b = store_b.search("auth", limit=5)
+    assert len(results_a) == 1
+    assert len(results_b) == 1

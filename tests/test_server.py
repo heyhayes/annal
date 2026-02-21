@@ -30,6 +30,14 @@ def mcp(server_env):
     return mcp
 
 
+@pytest.fixture
+def mcp_with_config(server_env):
+    """Return (mcp, config) so tests can manipulate config directly."""
+    config = AnnalConfig.load(server_env["config_path"])
+    mcp, _pool = create_server(config_path=server_env["config_path"], config=config)
+    return mcp, config
+
+
 async def _call(mcp, name: str, args: dict) -> str:
     """Call an MCP tool and return the text content."""
     result = await mcp.call_tool(name, args)
@@ -490,6 +498,9 @@ async def test_search_json_output(mcp):
     assert "score" in first
     assert "source" in first
     assert "created_at" in first
+    # Single-project: no cross-project fields
+    assert "project" not in first
+    assert "projects_searched" not in data["meta"]
 
 
 @pytest.mark.asyncio
@@ -577,3 +588,76 @@ async def test_expand_json_output(mcp):
     assert data["results"][0]["id"] == mem_id
     assert data["results"][0]["content"] == "Expand JSON test"
     assert "score" not in data["results"][0]
+
+
+@pytest.mark.asyncio
+async def test_search_memories_cross_project(mcp):
+    """search_memories with projects param searches across multiple projects."""
+    import json
+
+    # Store in two projects
+    await _call(mcp, "store_memory", {
+        "project": "proj_x", "content": "JWT auth in X", "tags": ["auth"]
+    })
+    await _call(mcp, "store_memory", {
+        "project": "proj_y", "content": "OAuth auth in Y", "tags": ["auth"]
+    })
+
+    # Cross-project search
+    result = await _call(mcp, "search_memories", {
+        "project": "proj_x",
+        "query": "auth",
+        "projects": ["proj_x", "proj_y"],
+        "output": "json",
+    })
+    data = json.loads(result)
+    assert len(data["results"]) == 2
+    assert "projects_searched" in data["meta"]
+    projects_found = {r["project"] for r in data["results"]}
+    assert projects_found == {"proj_x", "proj_y"}
+
+
+@pytest.mark.asyncio
+async def test_search_memories_cross_project_text_output(mcp):
+    """Cross-project text output includes project labels."""
+    await _call(mcp, "store_memory", {
+        "project": "text_x", "content": "Auth in X", "tags": ["auth"]
+    })
+    await _call(mcp, "store_memory", {
+        "project": "text_y", "content": "Auth in Y", "tags": ["auth"]
+    })
+
+    result = await _call(mcp, "search_memories", {
+        "project": "text_x",
+        "query": "auth",
+        "projects": ["text_x", "text_y"],
+    })
+    assert "(text_x)" in result
+    assert "(text_y)" in result
+
+
+@pytest.mark.asyncio
+async def test_search_memories_cross_project_star(mcp_with_config):
+    """projects='*' searches all configured projects."""
+    import json
+
+    mcp, config = mcp_with_config
+
+    config.add_project("star_a")
+    config.add_project("star_b")
+
+    await _call(mcp, "store_memory", {
+        "project": "star_a", "content": "Memory in A", "tags": ["test"]
+    })
+    await _call(mcp, "store_memory", {
+        "project": "star_b", "content": "Memory in B", "tags": ["test"]
+    })
+
+    result = await _call(mcp, "search_memories", {
+        "project": "star_a",
+        "query": "memory",
+        "projects": "*",
+        "output": "json",
+    })
+    data = json.loads(result)
+    assert len(data["results"]) == 2

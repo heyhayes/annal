@@ -75,6 +75,12 @@ Filter by tags to narrow results when the memory store grows large.
 Scope searches by date using `after` and `before` (ISO 8601 dates):
   search_memories(query="auth decision", after="2026-02-01", before="2026-02-28")
 
+## Cross-project search
+Search across multiple projects to find knowledge from other codebases:
+  search_memories(query="auth decision", project="current", projects=["other_project"])
+Use projects="*" to search all configured projects at once. Results are merged
+by relevance score. Each result includes the source project name.
+
 ## Structured output
 For programmatic access, use output="json" to get structured results:
   search_memories(query="...", output="json")
@@ -223,6 +229,7 @@ def create_server(
         after: str | None = None,
         before: str | None = None,
         output: str = "text",
+        projects: list[str] | str | None = None,
     ) -> str:
         """Search project memories using natural language.
 
@@ -237,17 +244,43 @@ def create_server(
             after: Optional ISO 8601 date — only return memories created after this date
             before: Optional ISO 8601 date — only return memories created before this date
             output: "text" (default) for formatted text, "json" for structured JSON
+            projects: Optional list of project names to search across, or "*" for all
+                      configured projects. Results are merged by score. Each result includes
+                      a project field. When omitted, searches only the primary project.
         """
         import json as json_mod
 
         tags = _normalize_tags(tags)
-        store = pool.get_store(project)
-        results = store.search(query=query, tags=tags, limit=limit, after=after, before=before)
 
-        empty_json = json_mod.dumps({
-            "results": [],
-            "meta": {"query": query, "mode": mode, "project": project, "total": 0, "returned": 0},
-        })
+        # Determine project list for search
+        if projects == "*":
+            search_projects = list(config.projects.keys())
+            if project not in search_projects:
+                search_projects.append(project)
+        elif projects:
+            search_projects = list(projects) if isinstance(projects, list) else [projects]
+        else:
+            search_projects = [project]
+
+        # Fan-out search across projects
+        all_results = []
+        for proj_name in search_projects:
+            store = pool.get_store(proj_name)
+            proj_results = store.search(query=query, tags=tags, limit=limit, after=after, before=before)
+            for r in proj_results:
+                r["project"] = proj_name
+            all_results.extend(proj_results)
+
+        # Merge by score, take top limit
+        all_results.sort(key=lambda r: r["score"], reverse=True)
+        results = all_results[:limit]
+
+        is_cross_project = len(search_projects) > 1
+
+        empty_meta = {"query": query, "mode": mode, "project": project, "total": 0, "returned": 0}
+        if is_cross_project:
+            empty_meta["projects_searched"] = search_projects
+        empty_json = json_mod.dumps({"results": [], "meta": empty_meta})
 
         if not results:
             return empty_json if output == "json" else f"[{project}] No matching memories found."
@@ -267,24 +300,27 @@ def create_server(
                     "created_at": r["created_at"],
                     "updated_at": r.get("updated_at", ""),
                 }
+                if is_cross_project:
+                    entry["project"] = r["project"]
                 if mode == "probe":
                     entry["content_preview"] = r["content"][:200]
                 else:
                     entry["content"] = r["content"]
                 json_results.append(entry)
-            return json_mod.dumps({
-                "results": json_results,
-                "meta": {
-                    "query": query,
-                    "mode": mode,
-                    "project": project,
-                    "total": len(results),
-                    "returned": len(results),
-                },
-            })
+            meta = {
+                "query": query,
+                "mode": mode,
+                "project": project,
+                "total": len(results),
+                "returned": len(results),
+            }
+            if is_cross_project:
+                meta["projects_searched"] = search_projects
+            return json_mod.dumps({"results": json_results, "meta": meta})
 
         lines = []
         for r in results:
+            proj_label = f"({r['project']}) " if is_cross_project else ""
             if mode == "probe":
                 content = r["content"]
                 first_line = content.split("\n", 1)[0]
@@ -294,11 +330,11 @@ def create_server(
                 date = (r.get("updated_at") or r["created_at"] or "")[:10] or "unknown"
                 source_label = r["source"] or "session observation"
                 lines.append(
-                    f'[{r["score"]:.2f}] ({", ".join(r["tags"])}) "{snippet}"'
+                    f'{proj_label}[{r["score"]:.2f}] ({", ".join(r["tags"])}) "{snippet}"'
                     f"\n  Source: {source_label} | {date} | ID: {r['id']}"
                 )
             else:
-                entry = f"[{r['score']:.2f}] ({', '.join(r['tags'])}) {r['content']}"
+                entry = f"{proj_label}[{r['score']:.2f}] ({', '.join(r['tags'])}) {r['content']}"
                 if r["source"]:
                     entry += f"\n  Source: {r['source']}"
                 if r.get("updated_at"):
