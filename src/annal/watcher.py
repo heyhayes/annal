@@ -5,6 +5,7 @@ from __future__ import annotations
 import fnmatch
 import logging
 import os
+from collections.abc import Callable
 from pathlib import Path
 
 from watchdog.events import FileSystemEventHandler, FileModifiedEvent, FileCreatedEvent, FileDeletedEvent
@@ -103,7 +104,7 @@ class FileWatcher:
         self._config = project_config
         self._observer: Observer | None = None
 
-    def reconcile(self) -> int:
+    def reconcile(self, progress_callback: Callable[[int], None] | None = None) -> int:
         """Scan all watch paths and index new or changed files. Returns file count."""
         total = 0
         skipped = 0
@@ -129,6 +130,8 @@ class FileWatcher:
 
                     index_file(self._store, file_path, file_mtime=current_mtime)
                     total += 1
+                    if progress_callback and total % 50 == 0:
+                        progress_callback(total)
                 except Exception:
                     logger.exception("Failed to reconcile file: %s", path)
 

@@ -341,10 +341,26 @@ def create_server(
             watch_exclude=watch_exclude,
         )
         config.save()
-        if watch_paths:
-            pool.reconcile_project(project_name)
-            pool.start_watcher(project_name)
         proj = config.projects[project_name]
+        if watch_paths:
+            def on_progress(count: int) -> None:
+                event_bus.push(Event(type="index_progress", project=project_name, detail=f"{count} files"))
+
+            def on_complete(count: int) -> None:
+                pool.start_watcher(project_name)
+                event_bus.push(Event(type="index_complete", project=project_name, detail=f"{count} files"))
+
+            event_bus.push(Event(type="index_started", project=project_name))
+            pool.reconcile_project_async(
+                project_name,
+                on_progress=on_progress,
+                on_complete=on_complete,
+            )
+            return (
+                f"Project '{project_name}' initialized. "
+                f"Indexing in progress — use index_status to check progress. "
+                f"Patterns: {proj.watch_patterns}, excludes: {proj.watch_exclude}."
+            )
         return (
             f"Project '{project_name}' initialized with "
             f"watch paths: {proj.watch_paths}, "
@@ -365,12 +381,23 @@ def create_server(
         if project not in config.projects:
             return f"[{project}] No watch paths configured. Use init_project first."
 
+        if pool.is_indexing(project):
+            return f"[{project}] Indexing already in progress. Use index_status to check progress."
+
+        def on_progress(count: int) -> None:
+            event_bus.push(Event(type="index_progress", project=project, detail=f"{count} files"))
+
+        def on_complete(count: int) -> None:
+            event_bus.push(Event(type="index_complete", project=project, detail=f"{count} files"))
+
         event_bus.push(Event(type="index_started", project=project))
-        store = pool.get_store(project)
-        store.delete_by_source("file:")
-        count = pool.reconcile_project(project)
-        event_bus.push(Event(type="index_complete", project=project, detail=f"{count} files"))
-        return f"[{project}] Cleared old file chunks and re-indexed {count} files."
+        pool.reconcile_project_async(
+            project,
+            on_progress=on_progress,
+            on_complete=on_complete,
+            clear_first=True,
+        )
+        return f"[{project}] Re-indexing started in background. Use index_status to check progress."
 
     return mcp
 

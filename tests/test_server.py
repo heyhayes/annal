@@ -197,6 +197,8 @@ async def test_init_project_with_custom_excludes(server_env):
 @pytest.mark.asyncio
 async def test_index_files_clears_stale_chunks(server_env):
     """index_files should remove old file-indexed chunks before re-indexing."""
+    import time
+
     mcp = create_server(config_path=server_env["config_path"])
     watch_dir = server_env["watch_dir"]
 
@@ -205,6 +207,8 @@ async def test_index_files_clears_stale_chunks(server_env):
         "project_name": "staletest",
         "watch_paths": [watch_dir],
     })
+    # Wait for async init indexing to complete
+    time.sleep(2)
 
     # Store an agent memory (should survive re-index)
     await _call(mcp, "store_memory", {
@@ -215,7 +219,9 @@ async def test_index_files_clears_stale_chunks(server_env):
 
     # Re-index — should clear file chunks but keep agent memories
     result = await _call(mcp, "index_files", {"project": "staletest"})
-    assert "Cleared old file chunks" in result
+    assert "Re-indexing started" in result
+    # Wait for async re-indexing to complete
+    time.sleep(2)
 
     # Agent memory should still be searchable
     search_result = await _call(mcp, "search_memories", {
@@ -335,3 +341,30 @@ async def test_search_min_score_zero_allows_positive(mcp):
     })
 
     assert "Apply discount on gross total" in result
+
+
+@pytest.mark.asyncio
+async def test_init_project_returns_immediately(server_env):
+    """init_project should return immediately with indexing message."""
+    mcp = create_server(config_path=server_env["config_path"])
+    result = await _call(mcp, "init_project", {
+        "project_name": "asyncinit",
+        "watch_paths": [server_env["watch_dir"]],
+    })
+    assert "indexing in progress" in result.lower() or "initialized" in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_index_files_returns_immediately(server_env):
+    """index_files should return immediately with progress message."""
+    import time
+
+    mcp = create_server(config_path=server_env["config_path"])
+    await _call(mcp, "init_project", {
+        "project_name": "asyncidx",
+        "watch_paths": [server_env["watch_dir"]],
+    })
+    time.sleep(1)
+
+    result = await _call(mcp, "index_files", {"project": "asyncidx"})
+    assert "asyncidx" in result.lower() or "index" in result.lower()

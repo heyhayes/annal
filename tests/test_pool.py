@@ -1,4 +1,5 @@
 import threading
+import time
 
 import pytest
 from annal.pool import StorePool
@@ -86,3 +87,54 @@ def test_store_pool_concurrent_get_store(tmp_data_dir, tmp_config_path):
     assert errors == [], f"Race condition errors: {errors}"
     # All threads should get the same store instance
     assert len(set(id(s) for s in stores)) == 1
+
+
+def test_reconcile_project_async(tmp_data_dir, tmp_config_path, tmp_path):
+    """reconcile_project_async should return immediately and reconcile in background."""
+    watch_dir = tmp_path / "docs"
+    watch_dir.mkdir()
+    (watch_dir / "test.md").write_text("# Test\nSome content\n")
+
+    config = AnnalConfig(config_path=tmp_config_path, data_dir=tmp_data_dir)
+    config.add_project("asynctest", watch_paths=[str(watch_dir)])
+    config.save()
+    pool = StorePool(config)
+
+    pool.reconcile_project_async("asynctest")
+
+    # Give the background thread time to finish
+    time.sleep(2)
+
+    store = pool.get_store("asynctest")
+    assert store.count() > 0
+
+
+def test_is_indexing(tmp_data_dir, tmp_config_path):
+    """is_indexing should return False when no indexing is running."""
+    config = AnnalConfig(config_path=tmp_config_path, data_dir=tmp_data_dir)
+    config.save()
+    pool = StorePool(config)
+
+    assert pool.is_indexing("anyproject") is False
+
+
+def test_get_last_reconcile(tmp_data_dir, tmp_config_path, tmp_path):
+    """get_last_reconcile should return info after reconciliation completes."""
+    watch_dir = tmp_path / "docs"
+    watch_dir.mkdir()
+    (watch_dir / "test.md").write_text("# Test\nContent\n")
+
+    config = AnnalConfig(config_path=tmp_config_path, data_dir=tmp_data_dir)
+    config.add_project("lastrectest", watch_paths=[str(watch_dir)])
+    config.save()
+    pool = StorePool(config)
+
+    # Before reconciliation
+    assert pool.get_last_reconcile("lastrectest") is None
+
+    # After synchronous reconciliation
+    pool.reconcile_project("lastrectest")
+    info = pool.get_last_reconcile("lastrectest")
+    assert info is not None
+    assert "timestamp" in info
+    assert "file_count" in info
