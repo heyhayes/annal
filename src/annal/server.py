@@ -139,9 +139,11 @@ review, and QA. Each role should verify against prior decisions before proceedin
 def create_server(
     config_path: str = DEFAULT_CONFIG_PATH,
     pool: StorePool | None = None,
+    config: AnnalConfig | None = None,
 ) -> tuple[FastMCP, StorePool]:
     """Create and configure the Annal MCP server."""
-    config = AnnalConfig.load(config_path)
+    if config is None:
+        config = AnnalConfig.load(config_path)
 
     mcp = FastMCP(
         "annal",
@@ -601,7 +603,7 @@ def main() -> None:
 
     config = AnnalConfig.load(config_path)
     pool = StorePool(config)
-    mcp, _ = create_server(config_path=config_path, pool=pool)
+    mcp, _ = create_server(config_path=config_path, pool=pool, config=config)
 
     if not no_dashboard:
         # In stdio mode the MCP port is free; in HTTP mode use port+1
