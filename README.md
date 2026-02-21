@@ -4,13 +4,13 @@
 
 > Early stage — this project is under active development and not yet ready for production use. APIs, config formats, and storage schemas may change without notice. If you're curious, feel free to explore and open issues, but expect rough edges.
 
-Semantic memory server for AI agent teams. Stores, searches, and retrieves knowledge across sessions using ChromaDB with local ONNX embeddings, exposed as an MCP server.
+Semantic memory server for AI agent teams. Stores, searches, and retrieves knowledge across sessions using pluggable vector backends (ChromaDB or Qdrant) with local ONNX embeddings, exposed as an MCP server.
 
 Designed for multi-agent workflows where analysts, architects, developers, and reviewers need shared institutional memory — decisions made months ago surface automatically when relevant, preventing contradictions and preserving context that no single session can hold.
 
 ## How it works
 
-Annal runs as a persistent MCP server (stdio or HTTP) and provides tools for storing, searching, updating, and managing memories. Memories are embedded locally using all-MiniLM-L6-v2 (ONNX) and stored in ChromaDB, namespaced per project.
+Annal runs as a persistent MCP server (stdio or HTTP) and provides tools for storing, searching, updating, and managing memories. Memories are embedded locally using all-MiniLM-L6-v2 (ONNX) and stored in a vector backend (ChromaDB by default, Qdrant optional), namespaced per project. When using Qdrant, hybrid search combines dense vector similarity with BM25 keyword matching via reciprocal rank fusion for better recall.
 
 File indexing is optional. Point Annal at directories to watch and it will chunk markdown files by heading, track modification times for incremental re-indexing, and keep the store current via watchdog filesystem events. For large repos, file watching can be disabled per-project — agents trigger re-indexing on demand via `index_files`.
 
@@ -201,6 +201,25 @@ projects:
       - /home/user/projects/large-repo
 ```
 
+### Backend configuration
+
+By default, Annal uses ChromaDB (local, file-based, no extra dependencies). To switch to Qdrant for native tag filtering, hybrid BM25+vector search, and concurrent write support, add a `storage` section:
+
+```yaml
+storage:
+  backend: qdrant
+  backends:
+    qdrant:
+      url: http://localhost:6333
+      hybrid: true              # enable BM25 sparse vectors (default: true)
+    chromadb:
+      path: ~/.annal/data       # kept for migration
+```
+
+Install the Qdrant client dependency: `pip install annal[qdrant]`
+
+To migrate existing data between backends: `annal migrate --from chromadb --to qdrant --project myapp`
+
 ## Running as a daemon
 
 The recommended approach is `annal install`, which sets up the service for your OS automatically.
@@ -260,8 +279,11 @@ Six bug fixes (date filter, dual config, startup lock, pool lock safety, browse 
 ### 0.5.0 — Stress-Test Bug Sweep (shipped)
 Seven fixes from stress testing: min_score no longer masks fuzzy tag matches, cross-project search always includes primary project, empty parent heading chunks skipped, invalid dates raise errors instead of silently returning empty, dedup checks all agent-memory candidates, daemon threads joined on shutdown, fuzzy tag threshold lowered to 0.72.
 
+### 0.6.0 — Vector Backend Abstraction + Qdrant (shipped)
+VectorBackend protocol with pluggable backends. ChromaDB extracted behind protocol. QdrantBackend with native tag filtering, hybrid BM25+vector search via RRF, deterministic UUID mapping. Config-driven backend selection. Migration CLI (`annal migrate`).
+
 ### Future
-Memory relationships and supersession. Proactive context injection. Hybrid search (vector + full-text). CLI subcommands. Import/export.
+Memory relationships and supersession. Proactive context injection. CLI subcommands. Import/export.
 
 ## Development
 

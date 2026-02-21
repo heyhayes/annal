@@ -82,6 +82,15 @@ Compiled from the initial spike. Items marked with [field] are things to validat
 - ~~Daemon threads not joined on shutdown~~ — track reconciliation threads, join in `shutdown()` with configurable timeout. P2.
 - ~~Fuzzy tag threshold lowered to 0.72~~ — rescues "dbs"→"database" and "CI"→"ci-cd" with zero false positives. P2.
 
+## Shipped (spike 8 — 2026-02-21)
+
+- ~~Vector backend abstraction~~ — `VectorBackend` protocol (7 methods), `Embedder` protocol, `OnnxEmbedder` implementation. `MemoryStore` refactored to delegate to backend + embedder.
+- ~~ChromaBackend extraction~~ — existing ChromaDB logic extracted behind the `VectorBackend` protocol. Post-query filtering for tags/prefix/dates, JSON tag roundtrip.
+- ~~QdrantBackend~~ — full implementation with server-side tag filtering (MatchAny), deterministic UUID IDs (uuid5), cursor-based scroll for scan, post-query prefix/date filtering.
+- ~~Hybrid search (BM25 + vector fusion)~~ — Qdrant collections with BM25 sparse vectors + dense vectors. Queries use Reciprocal Rank Fusion (RRF) via Prefetch stages. Transparent to MemoryStore — `query_text` flows through for the BM25 leg.
+- ~~Config-driven backend selection~~ — `storage:` section in config.yaml selects backend (`chromadb` or `qdrant`) with per-backend config (path, url, hybrid flag).
+- ~~Migration CLI~~ — `annal migrate --from chromadb --to qdrant --project <name>` scans source, re-embeds in batches of 100, inserts into destination.
+
 ## Parked
 
 - ~~`annal --install-service` CLI command~~ — shipped as `annal install` in spike 3
@@ -103,7 +112,7 @@ Compiled from the initial spike. Items marked with [field] are things to validat
 
 - ~~Fuzzy tag matching~~ — shipped in spike 6: semantic similarity expands tag filters via ONNX embeddings
 - Type tag validation on store — the type tags (`memory`, `decision`, `pattern`, `bug`, `spec`, `preference`) are a fixed vocabulary. Soft-reject unknown type tags at store time with a suggestion ("did you mean `decision`?") to prevent drift. Domain tags remain free-form. P3.
-- Hybrid search — combine vector similarity with full-text search (BM25 or similar) for better recall. Vector search misses exact keyword matches; full-text misses semantic similarity. Fusing both (reciprocal rank fusion or similar) would improve retrieval without adding infrastructure.
+- ~~Hybrid search~~ — shipped in spike 8: BM25 + vector fusion via Qdrant RRF
 - [field] Tune the dedup threshold — currently 0.95 cosine similarity. Might be too aggressive (rejecting distinct memories) or too loose (allowing near-duplicates). Needs real-world data to calibrate.
 - [field] Evaluate retrieval quality — are agents finding what they need? Track cases where relevant memories aren't surfacing and identify patterns. *Spike 7 stress test scored 3.4/5 average across 10 MCP SDK onboarding queries. Auth and error handling were 5/5, project structure 1/5 (info not in docs). Main gaps: empty parent heading chunks and enumeration queries needing higher limits.*
 
@@ -143,7 +152,7 @@ Compiled from the initial spike. Items marked with [field] are things to validat
 
 ## Data management
 
-- Migration tooling — when config paths or collection naming changes (like the memex → annal rename), provide a way to migrate existing data rather than starting fresh
+- ~~Migration tooling~~ — shipped in spike 8: `annal migrate --from chromadb --to qdrant --project <name>`
 - Memory pinning / weight — not all memories are equal. An architectural decision should outrank a casual session observation. A `priority` metadata field (`normal`, `important`, `critical`) that boosts search scores would let agents surface high-value memories first. Could be set on store or promoted after the fact with a `pin_memory` tool.
 - Stale memory detection — surface memories that haven't matched any search in a long time or were stored many sessions ago. A `stale_memories(project, older_than_days)` tool would help agents curate the store. Needs a `last_accessed_at` field updated on search hits.
 - Memory supersession — a lightweight `supersede(old_id, new_id)` that marks an old memory as replaced without deleting it. Simpler than full knowledge graph linking but solves the key problem: agents can follow the chain to find the latest version of a decision. Could be as simple as a `superseded_by` metadata field that search results flag.
@@ -152,7 +161,7 @@ Compiled from the initial spike. Items marked with [field] are things to validat
 
 ## Architecture
 
-- [field] Concurrent write safety — multiple agents storing memories simultaneously via the HTTP daemon. Does ChromaDB handle this gracefully or do we need locking?
+- ~~Concurrent write safety~~ — resolved by Qdrant backend (native concurrent access). ChromaDB still limited to single-process access.
 - [field] Memory isolation between agents — the tag conventions (agent:role-name) provide soft isolation. Is that sufficient or do agents pollute each other's search results?
 - ~~Store pool thread safety~~ — fixed in spike 4: `threading.Lock` on `_stores` dict
 - Reconcile creates throwaway FileWatcher — `pool.reconcile_project` instantiates a full FileWatcher just to call `.reconcile()`, then discards it. `start_watcher` then creates another one. The reconcile logic could be a standalone function or live on the pool directly.
@@ -170,6 +179,6 @@ Compiled from the initial spike. Items marked with [field] are things to validat
 
 ## Future considerations (not for next spike)
 
-- pgvector migration path — if ChromaDB becomes a bottleneck at scale, the MemoryStore interface is clean enough to swap backends. Don't build this until it's actually needed.
+- ~~pgvector migration path~~ — superseded by spike 8: VectorBackend protocol makes adding new backends straightforward. Qdrant already available as an alternative.
 - Knowledge graph / entity linking — connecting memories by entities (people, systems, decisions) rather than just vector proximity. Significant complexity, only worth it if retrieval quality plateaus.
 - Memory dashboard — web UI for reviewing and managing what agents are learning. Browse memories by project/agent/tag, search, view similarity clusters, delete noise, and spot patterns in what's being stored. Primary value is human oversight of agent knowledge — seeing what they're actually retaining and correcting course when needed. Could be a lightweight local server (Flask/FastAPI + HTMX or similar) served alongside the MCP daemon.
