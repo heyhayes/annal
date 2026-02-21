@@ -671,3 +671,22 @@ async def test_search_memories_cross_project_star(mcp_with_config):
     })
     data_list = json.loads(result_list)
     assert len(data_list["results"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_min_score_skipped_when_tags_provided(mcp):
+    """min_score should not discard fuzzy tag matches with low content similarity."""
+    await _call(mcp, "store_memory", {
+        "project": "test",
+        "content": "JWT token rotation policy for microservice authentication",
+        "tags": ["authentication"],
+    })
+
+    # Vague query + tag filter — fuzzy match "auth"→"authentication" is the signal,
+    # content similarity against the vague query may be negative
+    result = await _call(mcp, "search_memories", {
+        "project": "test",
+        "query": "general knowledge",
+        "tags": ["auth"],
+    })
+    assert "JWT token rotation" in result

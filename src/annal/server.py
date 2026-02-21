@@ -286,7 +286,8 @@ def create_server(
         if not results:
             return empty_json if output == "json" else f"[{project}] No matching memories found."
 
-        results = [r for r in results if r["score"] >= min_score]
+        if not tags:
+            results = [r for r in results if r["score"] >= min_score]
         if not results:
             return empty_json if output == "json" else f"[{project}] No matching memories found."
 
