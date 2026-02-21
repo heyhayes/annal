@@ -257,6 +257,9 @@ Temporal filtering, structured JSON output, heading context in embeddings.
 ### 0.4.0 — Bug Sweep + Features (shipped)
 Six bug fixes (date filter, dual config, startup lock, pool lock safety, browse pagination, config I/O under lock). Fuzzy tag matching via ONNX embeddings. Cross-project search with fan-out and score-based merge.
 
+### 0.5.0 — Stress-Test Bug Sweep (shipped)
+Seven fixes from stress testing: min_score no longer masks fuzzy tag matches, cross-project search always includes primary project, empty parent heading chunks skipped, invalid dates raise errors instead of silently returning empty, dedup checks all agent-memory candidates, daemon threads joined on shutdown, fuzzy tag threshold lowered to 0.72.
+
 ### Future
 Memory relationships and supersession. Proactive context injection. Hybrid search (vector + full-text). CLI subcommands. Import/export.
 

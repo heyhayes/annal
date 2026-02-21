@@ -68,6 +68,20 @@ Compiled from the initial spike. Items marked with [field] are things to validat
 - ~~Fuzzy tag matching~~ — semantic similarity expands tag filters via ONNX embeddings (0.75 threshold)
 - ~~Cross-project search~~ — `projects` param on `search_memories` fans out across collections, merges by score
 
+## Shipped (spike 6.1 — 2026-02-21)
+
+- ~~`projects=["*"]` wildcard list form~~ — `projects == "*"` check didn't match `["*"]` (list), causing literal `annal_*` collection name error. Added `or projects == ["*"]` check. Published as 0.4.1.
+
+## Shipped (spike 7 — 2026-02-21)
+
+- ~~`min_score` masks fuzzy tag matches~~ — skip `min_score` filtering when tag filters are provided. Content similarity is noise when fuzzy tag match is the real signal. P1.
+- ~~Cross-project `projects` param excludes primary~~ — always include primary project in search set when `projects` is provided. P1.
+- ~~Empty parent heading chunks~~ — skip headings with no body text (only sub-headings). P1.
+- ~~Invalid date returns empty silently~~ — raise `ValueError` on invalid dates, return descriptive error message. Validate before empty-collection check. P1.
+- ~~Dedup check bypassed by file-indexed chunks~~ — increased limit from 5 to 10, removed early break so all agent-memory candidates are checked. P2.
+- ~~Daemon threads not joined on shutdown~~ — track reconciliation threads, join in `shutdown()` with configurable timeout. P2.
+- ~~Fuzzy tag threshold lowered to 0.72~~ — rescues "dbs"→"database" and "CI"→"ci-cd" with zero false positives. P2.
+
 ## Parked
 
 - ~~`annal --install-service` CLI command~~ — shipped as `annal install` in spike 3
@@ -91,7 +105,7 @@ Compiled from the initial spike. Items marked with [field] are things to validat
 - Type tag validation on store — the type tags (`memory`, `decision`, `pattern`, `bug`, `spec`, `preference`) are a fixed vocabulary. Soft-reject unknown type tags at store time with a suggestion ("did you mean `decision`?") to prevent drift. Domain tags remain free-form. P3.
 - Hybrid search — combine vector similarity with full-text search (BM25 or similar) for better recall. Vector search misses exact keyword matches; full-text misses semantic similarity. Fusing both (reciprocal rank fusion or similar) would improve retrieval without adding infrastructure.
 - [field] Tune the dedup threshold — currently 0.95 cosine similarity. Might be too aggressive (rejecting distinct memories) or too loose (allowing near-duplicates). Needs real-world data to calibrate.
-- [field] Evaluate retrieval quality — are agents finding what they need? Track cases where relevant memories aren't surfacing and identify patterns.
+- [field] Evaluate retrieval quality — are agents finding what they need? Track cases where relevant memories aren't surfacing and identify patterns. *Spike 7 stress test scored 3.4/5 average across 10 MCP SDK onboarding queries. Auth and error handling were 5/5, project structure 1/5 (info not in docs). Main gaps: empty parent heading chunks and enumeration queries needing higher limits.*
 
 ## LLM enrichment
 
