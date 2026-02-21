@@ -1,7 +1,7 @@
 import os
 import pytest
 from annal.config import AnnalConfig
-from annal.store import MemoryStore
+from tests.conftest import make_store
 from annal.watcher import FileWatcher
 
 
@@ -28,7 +28,7 @@ def test_full_workflow(tmp_data_dir, tmp_config_path, tmp_path):
     config.save()
 
     # 3. Create store and reconcile
-    store = MemoryStore(data_dir=tmp_data_dir, project="myproject")
+    store = make_store(tmp_data_dir,"myproject")
     proj_config = config.get_project("myproject")
     watcher = FileWatcher(store=store, project_config=proj_config)
     file_count = watcher.reconcile()

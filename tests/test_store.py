@@ -1,10 +1,10 @@
 import pytest
-from annal.store import MemoryStore
+from tests.conftest import make_store
 
 
 @pytest.fixture
 def store(tmp_data_dir):
-    return MemoryStore(data_dir=tmp_data_dir, project="testproject")
+    return make_store(tmp_data_dir, "testproject")
 
 
 def test_store_and_retrieve_memory(store):
@@ -88,7 +88,7 @@ def test_get_by_ids_empty_list(store):
 
 @pytest.fixture
 def store_with_data(tmp_data_dir):
-    store = MemoryStore(data_dir=tmp_data_dir, project="dashboard_test")
+    store = make_store(tmp_data_dir, "dashboard_test")
     store.store("Agent memory about billing", tags=["billing"], source="session observation")
     store.store("Agent memory about auth", tags=["auth", "decision"], source="design review")
     store.store("# README\nProject docs here", tags=["indexed", "docs"], source="file:/tmp/project/README.md", chunk_type="file-indexed")
@@ -134,7 +134,7 @@ def test_browse_filters_by_tags(store_with_data):
 
 
 def test_browse_empty_collection(tmp_data_dir):
-    store = MemoryStore(data_dir=tmp_data_dir, project="empty_browse")
+    store = make_store(tmp_data_dir, "empty_browse")
     results, total = store.browse()
     assert results == []
     assert total == 0
@@ -151,7 +151,7 @@ def test_stats_returns_breakdown(store_with_data):
 
 
 def test_update_memory_content(tmp_data_dir):
-    store = MemoryStore(data_dir=tmp_data_dir, project="update_test")
+    store = make_store(tmp_data_dir, "update_test")
     mem_id = store.store(content="Original content", tags=["test"])
 
     store.update(mem_id, content="Updated content")
@@ -164,7 +164,7 @@ def test_update_memory_content(tmp_data_dir):
 
 
 def test_update_memory_tags(tmp_data_dir):
-    store = MemoryStore(data_dir=tmp_data_dir, project="update_test")
+    store = make_store(tmp_data_dir, "update_test")
     mem_id = store.store(content="Some content", tags=["old-tag"])
 
     store.update(mem_id, tags=["new-tag", "extra"])
@@ -175,7 +175,7 @@ def test_update_memory_tags(tmp_data_dir):
 
 
 def test_search_returns_updated_at(tmp_data_dir):
-    store = MemoryStore(data_dir=tmp_data_dir, project="updated_at_search")
+    store = make_store(tmp_data_dir, "updated_at_search")
     mem_id = store.store(content="Will be updated", tags=["test"])
     store.update(mem_id, content="Updated content")
 
@@ -186,7 +186,7 @@ def test_search_returns_updated_at(tmp_data_dir):
 
 
 def test_browse_returns_updated_at(tmp_data_dir):
-    store = MemoryStore(data_dir=tmp_data_dir, project="updated_at_browse")
+    store = make_store(tmp_data_dir, "updated_at_browse")
     mem_id = store.store(content="Will be updated", tags=["test"])
     store.update(mem_id, content="Updated content")
 
@@ -197,14 +197,14 @@ def test_browse_returns_updated_at(tmp_data_dir):
 
 
 def test_update_nonexistent_memory_raises(tmp_data_dir):
-    store = MemoryStore(data_dir=tmp_data_dir, project="update_missing")
+    store = make_store(tmp_data_dir, "update_missing")
     with pytest.raises(ValueError, match="not found"):
         store.update("nonexistent-id", content="Should fail")
 
 
 def test_search_with_after_filter(tmp_data_dir):
     from datetime import datetime, timezone, timedelta
-    store = MemoryStore(data_dir=tmp_data_dir, project="temporal")
+    store = make_store(tmp_data_dir, "temporal")
 
     store.store(content="Old decision about auth", tags=["decision"])
     store.store(content="New decision about billing", tags=["decision"])
@@ -222,7 +222,7 @@ def test_search_with_after_filter(tmp_data_dir):
 
 def test_search_with_before_filter(tmp_data_dir):
     from datetime import datetime, timezone, timedelta
-    store = MemoryStore(data_dir=tmp_data_dir, project="temporal2")
+    store = make_store(tmp_data_dir, "temporal2")
 
     store.store(content="Some memory", tags=["test"])
 
@@ -239,7 +239,7 @@ def test_search_with_before_filter(tmp_data_dir):
 
 def test_search_with_after_and_before(tmp_data_dir):
     from datetime import datetime, timezone, timedelta
-    store = MemoryStore(data_dir=tmp_data_dir, project="temporal3")
+    store = make_store(tmp_data_dir, "temporal3")
 
     store.store(content="Memory in range", tags=["test"])
 
@@ -252,7 +252,7 @@ def test_search_with_after_and_before(tmp_data_dir):
 
 def test_browse_offset_limit_pages_correctly(tmp_data_dir):
     """browse should return correct pages using offset and limit."""
-    store = MemoryStore(data_dir=tmp_data_dir, project="paginate")
+    store = make_store(tmp_data_dir, "paginate")
     for i in range(10):
         store.store(content=f"Memory number {i}", tags=["test"])
 
@@ -275,7 +275,7 @@ def test_search_before_date_only_includes_full_day(tmp_data_dir):
     from unittest.mock import patch
     from datetime import datetime, timezone
 
-    store = MemoryStore(data_dir=tmp_data_dir, project="date_edge")
+    store = make_store(tmp_data_dir, "date_edge")
     # Store a memory with a known timestamp mid-day
     with patch("annal.store.datetime") as mock_dt:
         mock_dt.now.return_value = datetime(2026, 2, 21, 14, 30, 0, tzinfo=timezone.utc)
@@ -293,7 +293,7 @@ def test_search_before_date_only_includes_full_day(tmp_data_dir):
 
 def test_search_rejects_invalid_date_format(tmp_data_dir):
     """Non-ISO-8601 date strings should raise ValueError."""
-    store = MemoryStore(data_dir=tmp_data_dir, project="date_validate")
+    store = make_store(tmp_data_dir, "date_validate")
     store.store(content="Some memory", tags=["test"])
 
     with pytest.raises(ValueError, match="after.*yesterday"):
@@ -305,7 +305,7 @@ def test_search_rejects_invalid_date_format(tmp_data_dir):
 
 def test_search_json_empty_results(tmp_data_dir):
     """search with no results returns empty list."""
-    store = MemoryStore(data_dir=tmp_data_dir, project="json_empty")
+    store = make_store(tmp_data_dir, "json_empty")
     # Don't store anything — collection is empty
     results = store.search("anything", limit=5)
     assert results == []
@@ -316,7 +316,7 @@ def test_search_combined_tags_and_temporal(tmp_data_dir):
     from unittest.mock import patch
     from datetime import datetime, timezone
 
-    store = MemoryStore(data_dir=tmp_data_dir, project="combined")
+    store = make_store(tmp_data_dir, "combined")
 
     # Store memories with different tags and simulated timestamps
     with patch("annal.store.datetime") as mock_dt:
@@ -342,7 +342,7 @@ def test_search_combined_tags_and_temporal(tmp_data_dir):
 
 def test_search_overfetch_with_tag_filter(tmp_data_dir):
     """With many memories, tag filtering should still return correct results."""
-    store = MemoryStore(data_dir=tmp_data_dir, project="overfetch")
+    store = make_store(tmp_data_dir, "overfetch")
 
     # Store 15 memories with "noise" tag and 3 with "signal" tag
     # Total = 18, overfetch = max(5*3, 20) = 20, so all should be retrieved
@@ -358,7 +358,7 @@ def test_search_overfetch_with_tag_filter(tmp_data_dir):
 
 def test_fuzzy_tag_matching(tmp_data_dir):
     """Searching with tags=['auth'] should find memories tagged 'authentication'."""
-    store = MemoryStore(data_dir=tmp_data_dir, project="fuzzy_tags")
+    store = make_store(tmp_data_dir, "fuzzy_tags")
     store.store(content="Auth decision about JWT tokens", tags=["authentication", "decision"])
     store.store(content="Frontend uses React", tags=["frontend"])
 
@@ -369,7 +369,7 @@ def test_fuzzy_tag_matching(tmp_data_dir):
 
 def test_fuzzy_tag_no_false_positives(tmp_data_dir):
     """Fuzzy matching should not match unrelated tags."""
-    store = MemoryStore(data_dir=tmp_data_dir, project="fuzzy_strict")
+    store = make_store(tmp_data_dir, "fuzzy_strict")
     store.store(content="Caching layer uses Redis", tags=["caching", "infrastructure"])
     store.store(content="Auth uses OAuth", tags=["authentication"])
 
@@ -381,7 +381,7 @@ def test_fuzzy_tag_no_false_positives(tmp_data_dir):
 
 def test_fuzzy_tag_exact_still_works(tmp_data_dir):
     """Exact tag matches should still work."""
-    store = MemoryStore(data_dir=tmp_data_dir, project="fuzzy_exact")
+    store = make_store(tmp_data_dir, "fuzzy_exact")
     store.store(content="Billing uses Stripe", tags=["billing"])
     store.store(content="Frontend uses React", tags=["frontend"])
 
@@ -392,7 +392,7 @@ def test_fuzzy_tag_exact_still_works(tmp_data_dir):
 
 def test_fuzzy_tag_in_browse(tmp_data_dir):
     """browse() with tags should also use fuzzy matching."""
-    store = MemoryStore(data_dir=tmp_data_dir, project="fuzzy_browse")
+    store = make_store(tmp_data_dir, "fuzzy_browse")
     store.store(content="Auth decision", tags=["authentication"])
     store.store(content="Frontend stuff", tags=["frontend"])
 
@@ -403,8 +403,8 @@ def test_fuzzy_tag_in_browse(tmp_data_dir):
 
 def test_search_across_projects(tmp_data_dir):
     """Searching across multiple projects returns results from each."""
-    store_a = MemoryStore(data_dir=tmp_data_dir, project="project_a")
-    store_b = MemoryStore(data_dir=tmp_data_dir, project="project_b")
+    store_a = make_store(tmp_data_dir, "project_a")
+    store_b = make_store(tmp_data_dir, "project_b")
 
     store_a.store(content="Auth uses JWT in project A", tags=["auth"])
     store_b.store(content="Auth uses OAuth in project B", tags=["auth"])
@@ -418,7 +418,7 @@ def test_search_across_projects(tmp_data_dir):
 
 def test_fuzzy_tag_matches_dbs_to_database(tmp_data_dir):
     """Lowered threshold (0.72) should match 'dbs' to 'database'."""
-    store = MemoryStore(data_dir=tmp_data_dir, project="fuzzy_threshold")
+    store = make_store(tmp_data_dir, "fuzzy_threshold")
     store.store(content="PostgreSQL is our primary database", tags=["database"])
     store.store(content="Frontend uses React", tags=["frontend"])
 

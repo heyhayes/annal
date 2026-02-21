@@ -1,7 +1,7 @@
 import os
 import pytest
 from annal.indexer import chunk_markdown, chunk_config_file, index_file
-from annal.store import MemoryStore
+from tests.conftest import make_store
 
 
 def test_chunk_markdown_splits_by_headings():
@@ -46,7 +46,7 @@ def test_index_file_stores_chunks(tmp_data_dir, tmp_path):
     md_file = tmp_path / "test.md"
     md_file.write_text("# Section A\nContent A\n\n# Section B\nContent B\n")
 
-    store = MemoryStore(data_dir=tmp_data_dir, project="testproject")
+    store = make_store(tmp_data_dir,"testproject")
     count = index_file(store, str(md_file))
     assert count == 2
     assert store.count() == 2
@@ -89,7 +89,7 @@ def test_index_file_prepends_heading_path_to_content(tmp_data_dir, tmp_path):
     md_file = tmp_path / "doc.md"
     md_file.write_text("# Project\nIntro\n\n## Design\n### Backend\nUses Python.\n")
 
-    store = MemoryStore(data_dir=tmp_data_dir, project="headingtest")
+    store = make_store(tmp_data_dir,"headingtest")
     index_file(store, str(md_file))
 
     results = store.search("Python", limit=5)
@@ -105,7 +105,7 @@ def test_reindex_file_replaces_old_chunks(tmp_data_dir, tmp_path):
     md_file = tmp_path / "test.md"
     md_file.write_text("# Version 1\nOld content\n")
 
-    store = MemoryStore(data_dir=tmp_data_dir, project="testproject")
+    store = make_store(tmp_data_dir,"testproject")
     index_file(store, str(md_file))
     assert store.count() == 1
 
@@ -124,7 +124,7 @@ def test_heading_context_uses_full_path(tmp_data_dir, tmp_path):
     md_file = tmp_path / "doc.md"
     md_file.write_text("# Project\nIntro\n\n## Design\n### Backend\nUses Python.\n")
 
-    store = MemoryStore(data_dir=tmp_data_dir, project="heading_strict")
+    store = make_store(tmp_data_dir,"heading_strict")
     index_file(store, str(md_file))
 
     results = store.search("Python", limit=5)

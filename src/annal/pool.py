@@ -7,6 +7,8 @@ import threading
 from collections.abc import Callable
 from datetime import datetime, timezone
 
+from annal.backend import Embedder, OnnxEmbedder, VectorBackend
+from annal.backends.chromadb import ChromaBackend
 from annal.config import AnnalConfig
 from annal.events import event_bus, Event
 from annal.store import MemoryStore
@@ -27,6 +29,7 @@ class StorePool:
         self._index_started: dict[str, datetime] = {}
         self._last_reconcile: dict[str, dict] = {}
         self._reconcile_threads: list[threading.Thread] = []
+        self._embedder: Embedder | None = None
 
     def _get_index_lock(self, project: str) -> threading.Lock:
         """Get or create an index lock for a project (thread-safe)."""
@@ -35,15 +38,30 @@ class StorePool:
                 self._index_locks[project] = threading.Lock()
             return self._index_locks[project]
 
+    def _get_embedder(self) -> Embedder:
+        """Get the shared embedder instance (created once, reused across stores)."""
+        if self._embedder is None:
+            self._embedder = OnnxEmbedder()
+        return self._embedder
+
+    def _create_backend(self, project: str) -> VectorBackend:
+        """Create a vector backend for the given project."""
+        collection_name = f"annal_{project}"
+        return ChromaBackend(
+            path=self._config.data_dir,
+            collection_name=collection_name,
+            dimension=self._get_embedder().dimension,
+        )
+
     def get_store(self, project: str) -> MemoryStore:
         """Get or create a MemoryStore for the given project."""
         need_save = False
         with self._lock:
             if project not in self._stores:
                 logger.info("Creating store for project '%s'", project)
-                self._stores[project] = MemoryStore(
-                    data_dir=self._config.data_dir, project=project
-                )
+                backend = self._create_backend(project)
+                embedder = self._get_embedder()
+                self._stores[project] = MemoryStore(backend, embedder)
                 if project not in self._config.projects:
                     self._config.add_project(project)
                     need_save = True

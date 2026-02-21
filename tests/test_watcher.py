@@ -3,7 +3,7 @@ import time
 import pytest
 from pathlib import Path
 from annal.watcher import FileWatcher, matches_patterns
-from annal.store import MemoryStore
+from tests.conftest import make_store
 from annal.config import ProjectConfig
 
 
@@ -37,7 +37,7 @@ def test_reconcile_indexes_new_files(tmp_data_dir, tmp_path):
     md_file = tmp_path / "test.md"
     md_file.write_text("# Hello\nWorld\n")
 
-    store = MemoryStore(data_dir=tmp_data_dir, project="testproject")
+    store = make_store(tmp_data_dir,"testproject")
     project_config = ProjectConfig(
         watch_paths=[str(tmp_path)],
         watch_patterns=["**/*.md"],
@@ -66,7 +66,7 @@ def test_reconcile_skips_excluded_dirs(tmp_data_dir, tmp_path):
     # And a non-excluded file
     (tmp_path / "docs.md").write_text("# Should be indexed\n")
 
-    store = MemoryStore(data_dir=tmp_data_dir, project="testproject")
+    store = make_store(tmp_data_dir,"testproject")
     project_config = ProjectConfig(
         watch_paths=[str(tmp_path)],
         watch_patterns=["**/*.md"],
@@ -88,7 +88,7 @@ def test_reconcile_survives_unreadable_file(tmp_data_dir, tmp_path):
     bad.write_text("# Unreadable\n")
     bad.chmod(0o000)
 
-    store = MemoryStore(data_dir=tmp_data_dir, project="testproject")
+    store = make_store(tmp_data_dir,"testproject")
     project_config = ProjectConfig(
         watch_paths=[str(tmp_path)],
         watch_patterns=["**/*.md"],
