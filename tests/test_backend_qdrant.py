@@ -167,3 +167,26 @@ def test_scan_with_tag_filter(backend, embedder):
     results, total = backend.scan(offset=0, limit=10, where={"tags": {"$contains_any": ["auth"]}})
     assert total == 1
     assert results[0].id == "m1"
+
+
+def test_hybrid_search_boosts_keyword_match(embedder):
+    """BM25 hybrid search should boost documents containing the exact query term."""
+    collection = f"test_{uuid.uuid4().hex[:8]}"
+    b = QdrantBackend(
+        url="http://localhost:6333",
+        collection_name=collection,
+        dimension=embedder.dimension,
+        hybrid=True,
+    )
+    try:
+        b.insert("m1", "The HNSW algorithm uses hierarchical navigable small world graphs",
+                 embedder.embed("The HNSW algorithm uses hierarchical navigable small world graphs"),
+                 {"tags": ["tech"], "chunk_type": "agent-memory", "created_at": "2026-01-01T00:00:00"})
+        b.insert("m2", "We decided to use PostgreSQL for the user database",
+                 embedder.embed("We decided to use PostgreSQL for the user database"),
+                 {"tags": ["tech"], "chunk_type": "agent-memory", "created_at": "2026-01-01T00:00:00"})
+
+        results = b.query(embedder.embed("HNSW"), limit=5, query_text="HNSW")
+        assert results[0].id == "m1"
+    finally:
+        QdrantClient(url="http://localhost:6333").delete_collection(collection)

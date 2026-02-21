@@ -49,7 +49,8 @@ class ChromaBackend:
             self._collection.delete(ids=ids)
 
     def query(
-        self, embedding: list[float], limit: int, where: dict | None = None
+        self, embedding: list[float], limit: int, where: dict | None = None,
+        query_text: str | None = None,
     ) -> list[VectorResult]:
         total = self._collection.count()
         if total == 0:

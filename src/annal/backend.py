@@ -37,7 +37,8 @@ class VectorBackend(Protocol):
     def delete(self, ids: list[str]) -> None: ...
 
     def query(
-        self, embedding: list[float], limit: int, where: dict | None = None
+        self, embedding: list[float], limit: int, where: dict | None = None,
+        query_text: str | None = None,
     ) -> list[VectorResult]: ...
 
     def get(self, ids: list[str]) -> list[VectorResult]: ...

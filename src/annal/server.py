@@ -671,7 +671,8 @@ def main() -> None:
             if name == "qdrant":
                 from annal.backends.qdrant import QdrantBackend
                 url = backend_config.get("url", "http://localhost:6333")
-                return QdrantBackend(url=url, collection_name=collection, dimension=dimension)
+                hybrid = backend_config.get("hybrid", True)
+                return QdrantBackend(url=url, collection_name=collection, dimension=dimension, hybrid=hybrid)
             raise ValueError(f"Unknown backend: {name}")
 
         src = _make_backend(args.from_backend)

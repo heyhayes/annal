@@ -150,7 +150,7 @@ class MemoryStore:
         needs_overfetch = tags or after or before
         query_limit = max(limit * 3, 20) if needs_overfetch else limit
 
-        results = self._backend.query(embedding, limit=query_limit, where=where)
+        results = self._backend.query(embedding, limit=query_limit, where=where, query_text=query)
 
         memories = []
         for r in results:
