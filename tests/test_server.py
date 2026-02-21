@@ -519,6 +519,23 @@ async def test_search_json_probe_mode(mcp):
 
 
 @pytest.mark.asyncio
+async def test_search_memories_json_empty(mcp):
+    """search_memories with output='json' and no results returns correct JSON structure."""
+    import json
+
+    result = await _call(mcp, "search_memories", {
+        "project": "emptyproject",
+        "query": "anything",
+        "output": "json",
+    })
+
+    data = json.loads(result)
+    assert data["results"] == []
+    assert data["meta"]["total"] == 0
+    assert data["meta"]["project"] == "emptyproject"
+
+
+@pytest.mark.asyncio
 async def test_search_text_output_unchanged(mcp):
     """output='text' (default) should return the same format as before."""
     await _call(mcp, "store_memory", {
