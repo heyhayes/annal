@@ -84,6 +84,23 @@ Finest detail text
     assert any("Finest Detail" in h for h in headings)
 
 
+def test_index_file_prepends_heading_path_to_content(tmp_data_dir, tmp_path):
+    """Stored content should start with the heading path for embedding context."""
+    md_file = tmp_path / "doc.md"
+    md_file.write_text("# Project\nIntro\n\n## Design\n### Backend\nUses Python.\n")
+
+    store = MemoryStore(data_dir=tmp_data_dir, project="headingtest")
+    index_file(store, str(md_file))
+
+    results = store.search("Python", limit=5)
+    backend_chunk = [r for r in results if "Backend" in r["source"]]
+    assert len(backend_chunk) > 0
+    # Content should start with heading path
+    assert backend_chunk[0]["content"].startswith("doc.md")
+    assert "Backend" in backend_chunk[0]["content"]
+    assert "Uses Python" in backend_chunk[0]["content"]
+
+
 def test_reindex_file_replaces_old_chunks(tmp_data_dir, tmp_path):
     md_file = tmp_path / "test.md"
     md_file.write_text("# Version 1\nOld content\n")
