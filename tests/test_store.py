@@ -289,3 +289,16 @@ def test_search_before_date_only_includes_full_day(tmp_data_dir):
     # after='2026-02-21' (date only) should also include it
     results = store.search("Feb 21", after="2026-02-21")
     assert len(results) == 1
+
+
+def test_search_rejects_invalid_date_format(tmp_data_dir):
+    """Non-ISO-8601 date strings should not silently produce wrong results."""
+    store = MemoryStore(data_dir=tmp_data_dir, project="date_validate")
+    store.store(content="Some memory", tags=["test"])
+
+    # These should return empty results (invalid date = no valid filter = return nothing)
+    results = store.search("memory", after="yesterday")
+    assert len(results) == 0
+
+    results = store.search("memory", before="not-a-date")
+    assert len(results) == 0

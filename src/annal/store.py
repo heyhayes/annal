@@ -3,18 +3,22 @@
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from datetime import datetime, timezone
 
 import chromadb
 
+_ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2})?")
 
-def _normalize_date_bound(value: str, end_of_day: bool) -> str:
+
+def _normalize_date_bound(value: str, end_of_day: bool) -> str | None:
     """Normalize a date-only string to include time for correct comparison.
 
-    If value already contains 'T' (is a datetime), return as-is.
-    Otherwise append T23:59:59 (for before) or T00:00:00 (for after).
+    Returns None if the value is not a valid ISO 8601 date/datetime prefix.
     """
+    if not _ISO_DATE_RE.match(value):
+        return None
     if "T" in value:
         return value
     return value + ("T23:59:59" if end_of_day else "T00:00:00")
@@ -65,8 +69,12 @@ class MemoryStore:
 
         if after:
             after = _normalize_date_bound(after, end_of_day=False)
+            if after is None:
+                return []
         if before:
             before = _normalize_date_bound(before, end_of_day=True)
+            if before is None:
+                return []
 
         # Over-fetch when filtering post-query (tags or temporal)
         needs_overfetch = tags or after or before
