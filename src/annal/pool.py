@@ -105,8 +105,11 @@ class StorePool:
         return self._last_reconcile.get(project)
 
     def start_watcher(self, project: str) -> None:
-        """Start a file watcher for the given project."""
+        """Start a file watcher for the given project (skipped if watch=false)."""
         if project not in self._config.projects:
+            return
+        if not self._config.projects[project].watch:
+            logger.info("File watching disabled for project '%s'", project)
             return
         if project in self._watchers:
             return

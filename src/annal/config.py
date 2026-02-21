@@ -29,6 +29,7 @@ class ProjectConfig:
     watch_paths: list[str] = field(default_factory=list)
     watch_patterns: list[str] = field(default_factory=lambda: list(DEFAULT_WATCH_PATTERNS))
     watch_exclude: list[str] = field(default_factory=lambda: list(DEFAULT_WATCH_EXCLUDE))
+    watch: bool = True
 
 
 @dataclass
@@ -53,6 +54,7 @@ class AnnalConfig:
                 watch_paths=proj_data.get("watch_paths", []),
                 watch_patterns=proj_data.get("watch_patterns", list(DEFAULT_WATCH_PATTERNS)),
                 watch_exclude=proj_data.get("watch_exclude", list(DEFAULT_WATCH_EXCLUDE)),
+                watch=proj_data.get("watch", True),
             )
 
         return cls(
@@ -74,6 +76,7 @@ class AnnalConfig:
                     "watch_paths": proj.watch_paths,
                     "watch_patterns": proj.watch_patterns,
                     "watch_exclude": proj.watch_exclude,
+                    **({"watch": proj.watch} if not proj.watch else {}),
                 }
                 for name, proj in self.projects.items()
             },
