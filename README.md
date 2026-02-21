@@ -180,6 +180,20 @@ When running as an HTTP daemon, the dashboard is available at `http://localhost:
 
 Disable with `--no-dashboard` if not needed.
 
+## Roadmap
+
+### 0.1.0 — Foundation (shipped)
+Core memory store, semantic search, file indexing, MCP server, web dashboard, one-shot install.
+
+### 0.2.0 — Operational Readiness (shipped)
+Async indexing, thread safety, index_status diagnostics, mtime cache performance, optional file watching.
+
+### 0.3.0 — Search & Retrieval (next)
+Temporal filtering, source/path scoping, cross-project search, bulk operations, structured JSON output.
+
+### Future
+Memory relationships and supersession. Proactive context injection. Hybrid search (vector + full-text). Automated git history indexing.
+
 ## Development
 
 ```bash
