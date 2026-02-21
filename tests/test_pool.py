@@ -179,3 +179,25 @@ def test_reconcile_project_async_emits_index_failed_on_error(tmp_data_dir, tmp_c
 
     # Pool should not be stuck in indexing state after failure
     assert pool.is_indexing("failtest") is False
+
+
+def test_get_index_lock_returns_same_lock(tmp_data_dir, tmp_config_path):
+    """_get_index_lock should return the same lock for the same project."""
+    config = AnnalConfig(config_path=tmp_config_path, data_dir=tmp_data_dir)
+    config.save()
+    pool = StorePool(config)
+
+    lock1 = pool._get_index_lock("testproject")
+    lock2 = pool._get_index_lock("testproject")
+    assert lock1 is lock2
+
+
+def test_get_index_lock_different_projects(tmp_data_dir, tmp_config_path):
+    """_get_index_lock should return different locks for different projects."""
+    config = AnnalConfig(config_path=tmp_config_path, data_dir=tmp_data_dir)
+    config.save()
+    pool = StorePool(config)
+
+    lock1 = pool._get_index_lock("project_a")
+    lock2 = pool._get_index_lock("project_b")
+    assert lock1 is not lock2
