@@ -91,6 +91,15 @@ def test_install_idempotent(fake_home):
     assert codex.count("[mcp_servers.annal]") == 1
 
 
+def test_annal_executable_returns_list():
+    """_annal_executable should return a list of strings, not a single string."""
+    from annal.cli import _annal_executable
+    result = _annal_executable()
+    assert isinstance(result, list)
+    assert all(isinstance(s, str) for s in result)
+    assert len(result) >= 1
+
+
 def test_uninstall_removes_mcp_json_entry(fake_home):
     # First install
     with patch("annal.cli.Path.home", return_value=fake_home):

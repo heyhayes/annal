@@ -18,15 +18,15 @@ MCP_URL = "http://localhost:9200/mcp"
 INTERNAL_URL = "http://127.0.0.1:9200/mcp"
 
 
-def _annal_executable() -> str:
-    """Find the annal executable path."""
+def _annal_executable() -> list[str]:
+    """Find the annal executable path. Returns a list for subprocess/plist compatibility."""
     venv_bin = Path(sys.executable).parent / "annal"
     if venv_bin.exists():
-        return str(venv_bin)
+        return [str(venv_bin)]
     found = shutil.which("annal")
     if found:
-        return found
-    return f"{sys.executable} -m annal.server"
+        return [found]
+    return [sys.executable, "-m", "annal.server"]
 
 
 def install(start_service: bool = True) -> str:
@@ -117,7 +117,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart={exe} --transport streamable-http
+ExecStart={" ".join(exe)} --transport streamable-http
 Restart=always
 RestartSec=3
 Environment=PYTHONUNBUFFERED=1
@@ -137,6 +137,7 @@ WantedBy=default.target
         plist_dir = home / "Library" / "LaunchAgents"
         plist_dir.mkdir(parents=True, exist_ok=True)
         plist_file = plist_dir / "com.annal.server.plist"
+        prog_args = "\n        ".join(f"<string>{arg}</string>" for arg in exe)
         plist_file.write_text(f"""\
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" \
@@ -146,7 +147,7 @@ WantedBy=default.target
     <key>Label</key><string>com.annal.server</string>
     <key>ProgramArguments</key>
     <array>
-        <string>{exe}</string>
+        {prog_args}
         <string>--transport</string>
         <string>streamable-http</string>
     </array>
