@@ -71,6 +71,16 @@ Use search_memories with natural language — it uses semantic similarity, not k
 matching. Use mode="probe" to scan results cheaply, then expand_memories for details.
 Filter by tags to narrow results when the memory store grows large.
 
+## Temporal filtering
+Scope searches by date using `after` and `before` (ISO 8601 dates):
+  search_memories(query="auth decision", after="2026-02-01", before="2026-02-28")
+
+## Structured output
+For programmatic access, use output="json" to get structured results:
+  search_memories(query="...", output="json")
+Returns {"results": [...], "meta": {...}} instead of formatted text.
+Also available on expand_memories(memory_ids=[...], output="json").
+
 ## Tag conventions
 
 Tags serve two purposes: classifying what a memory is about (domain tags) and

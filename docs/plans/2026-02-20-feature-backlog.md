@@ -41,17 +41,23 @@ Compiled from the initial spike. Items marked with [field] are things to validat
 - ~~Spike 3 test gaps~~ — added tests for nonexistent update, no-op update, install idempotency, executable return type, h4-h6 headings
 - ~~Mtime float tolerance~~ — `abs(stored - current) < 0.5` instead of `==` for ChromaDB roundtrip precision
 
-## From spike 4 code review
+## Shipped (spike 5 — 2026-02-21)
 
-- Duplicate StorePool in `main()` — dashboard creates its own pool separate from the one inside `create_server()`, so they operate on independent ChromaDB connections. Can cause stale dashboard reads. Fix: expose the pool from `create_server` so both share it. P0.
-- `_index_locks` defaultdict race — safe under CPython GIL but fragile by contract. If two threads access a missing key simultaneously on free-threaded Python (PEP 703), they could get different Lock instances. Protect with `_lock` or use explicit lock creation. P2.
+- ~~Duplicate StorePool in `main()`~~ — `create_server()` now returns `(mcp, pool)` tuple, `main()` shares a single pool with both server and dashboard. P0.
+- ~~`activity-indicator` JS references nonexistent element~~ — added `<span id="activity-indicator">` to the page header, fixed JS to use defensive `var el` pattern. P1.
+- ~~No `index_failed` event~~ — `reconcile_project_async` now catches exceptions and emits `index_failed`. Startup reconciliation wraps each project in try/except. P1.
+- ~~`_index_locks` defaultdict race~~ — replaced with `_get_index_lock()` method protected by `self._lock`. P2.
+- ~~SSE catches `Exception` too broadly~~ — narrowed to `queue.Empty`. P2.
+- ~~`get_file_mtime` dead code~~ — removed. P3.
+- ~~`httpx` missing from dev deps~~ — added. P3.
+- ~~Heading context in embeddings~~ — file-indexed chunks now prepend heading path to content for better retrieval quality.
+- ~~Temporal filtering~~ — `after`/`before` ISO 8601 date params on `search_memories`, post-query filtering on `created_at`.
+- ~~Structured JSON output~~ — `output="json"` param on `search_memories` and `expand_memories`.
+
+## From spike 4 code review (remaining)
+
 - `_index_started` / `_last_reconcile` read without locks — written by the reconcile thread, read by `index_status`. Atomic under GIL but inconsistent with the spike's thread-safety-by-contract goal. P2.
-- `activity-indicator` JS references nonexistent element — `memories.html` calls `getElementById('activity-indicator')` but no such element exists. Throws TypeError on every index event. P1.
-- No `index_failed` event — design doc specifies it but it's not emitted. If reconciliation crashes, the dashboard badge stays stuck at "indexing..." indefinitely. P1.
-- SSE catches `Exception` too broadly — should catch `queue.Empty` specifically instead of swallowing all exceptions as keepalives. P2.
 - `config.save()` under `_lock` — YAML serialization + file I/O while holding the pool lock. Could block other threads if filesystem is slow. Move save outside the lock. P3.
-- `get_file_mtime` is dead code — superseded by `get_all_file_mtimes()` mtime cache. No callers remain. Remove. P3.
-- `httpx` missing from dev dependencies — used by SSE dashboard test but only available transitively. P3.
 - `browse()` loads entire collection — every page request fetches all chunks into memory, then slices. Known limitation (noted as non-goal in spike 4 design) but problematic for kubernetes-scale projects on the dashboard. P2.
 
 ## Parked
@@ -68,7 +74,7 @@ Compiled from the initial spike. Items marked with [field] are things to validat
 
 - Input normalization for tags — Codex sent `tags="dashboard"` (bare string) instead of `["dashboard"]`, causing a validation error. Accept `string | list[str]` and coerce to list internally. P0.
 - Default min_score cutoff — probe search returned results with negative scores (-0.03, -0.06) which are pure noise. Add an optional `min_score` param to `search_memories` and suppress negatives by default. P0.
-- Structured JSON responses — Codex suggested returning `{results: [{id, content_preview, tags, score}], meta: {query, mode, total}}` alongside or instead of formatted text. Worth considering for non-Claude clients that want to process results programmatically. P2.
+- ~~Structured JSON responses~~ — shipped in spike 5: `output="json"` on `search_memories` and `expand_memories`
 
 ## Retrieval quality
 
@@ -105,7 +111,7 @@ Compiled from the initial spike. Items marked with [field] are things to validat
 - `add_tags` / `retag_memory` — modify tags on an existing memory after storage. If an agent realizes a set of memories should have had a `billing` tag, there's currently no recourse. Just a metadata update on the ChromaDB document.
 - ~~`index_status`~~ — shipped in spike 4
 - Source-scoped search — add an optional `source_prefix` filter to `search_memories` so agents can search within a specific file's chunks or only within agent memories. Useful when the agent knows the knowledge came from a specific document.
-- Time window filter — add optional `after` / `before` date parameters to `search_memories`. ChromaDB metadata supports `$gte`/`$lte` on `created_at`, so this is low-cost. Useful for scoping searches to recent decisions or filtering out stale context.
+- ~~Time window filter~~ — shipped in spike 5: `after`/`before` params on `search_memories`
 - CLI subcommands — extend the `annal` entry point beyond just running the server. Add `annal search "query" --project foo --tags decision`, `annal store --project foo --tags decision`, `annal topics --project foo`. Makes Annal usable from the terminal without the agent stack, good for debugging and manual curation.
 - Import/export — export a project to JSONL (id, text, metadata), import from JSONL. Useful for testing, portability, backups, and open-source readiness. Simple format, no external dependencies.
 - ~~`init_project` patterns/excludes~~ — shipped in spike 2
