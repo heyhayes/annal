@@ -224,9 +224,14 @@ def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
         async def generate():
             try:
                 while True:
-                    # Bridge from thread-safe queue to async via run_in_executor
-                    event = await loop.run_in_executor(None, q.get)
-                    yield f"event: {event.type}\ndata: {event.project}|{event.detail}\n\n"
+                    try:
+                        event = await loop.run_in_executor(
+                            None, lambda: q.get(timeout=30)
+                        )
+                        yield f"event: {event.type}\ndata: {event.project}|{event.detail}\n\n"
+                    except Exception:
+                        # queue.Empty on timeout — send keepalive comment
+                        yield ": keepalive\n\n"
             except asyncio.CancelledError:
                 pass
             finally:
