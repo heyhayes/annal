@@ -203,7 +203,7 @@ def create_server(
 
         # Check for near-duplicate before storing — over-fetch so file-indexed
         # chunks at the top don't hide a real agent-memory duplicate further down
-        existing = store.search(query=content, limit=5)
+        existing = store.search(query=content, limit=10)
         for candidate in existing:
             if candidate["chunk_type"] != "agent-memory":
                 continue
@@ -212,7 +212,6 @@ def create_server(
                     f"[{project}] Skipped — similar memory already exists "
                     f"(score: {candidate['score']:.2f}, ID: {candidate['id']})"
                 )
-            break  # first agent-memory was below threshold, no need to check worse ones
 
         mem_id = store.store(content=content, tags=tags, source=source)
         event_bus.push(Event(type="memory_stored", project=project, detail=mem_id))

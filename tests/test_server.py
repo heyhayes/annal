@@ -726,3 +726,22 @@ async def test_search_with_invalid_date_returns_error(mcp):
     })
     assert "Error" in result
     assert "yesterday" in result
+
+
+@pytest.mark.asyncio
+async def test_dedup_checks_all_agent_memories(mcp):
+    """Dedup should check all agent-memory candidates, not just the first."""
+    # Store the original
+    await _call(mcp, "store_memory", {
+        "project": "test",
+        "content": "The authentication service uses JWT with RS256 signing",
+        "tags": ["auth"],
+    })
+
+    # Store an identical duplicate — should be caught
+    result = await _call(mcp, "store_memory", {
+        "project": "test",
+        "content": "The authentication service uses JWT with RS256 signing",
+        "tags": ["auth"],
+    })
+    assert "Skipped" in result or "similar memory already exists" in result
