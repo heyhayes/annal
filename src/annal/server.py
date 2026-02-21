@@ -145,7 +145,9 @@ def create_server(
     def _startup_reconcile() -> None:
         for project_name in config.projects:
             logger.info("Reconciling project '%s'...", project_name)
-            pool.reconcile_project(project_name)
+            event_bus.push(Event(type="index_started", project=project_name))
+            count = pool.reconcile_project(project_name)
+            event_bus.push(Event(type="index_complete", project=project_name, detail=f"{count} files"))
             pool.start_watcher(project_name)
         logger.info("Startup reconciliation complete")
 
