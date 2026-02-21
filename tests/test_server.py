@@ -455,3 +455,108 @@ async def test_search_with_temporal_filter(mcp):
         "after": tomorrow,
     })
     assert "No matching memories" in result
+
+
+@pytest.mark.asyncio
+async def test_search_json_output(mcp):
+    """output='json' should return valid JSON with results and meta."""
+    import json
+
+    await _call(mcp, "store_memory", {
+        "project": "test",
+        "content": "JSON output test memory",
+        "tags": ["test"],
+        "source": "test-source",
+    })
+
+    result = await _call(mcp, "search_memories", {
+        "project": "test",
+        "query": "JSON output",
+        "output": "json",
+    })
+
+    data = json.loads(result)
+    assert "results" in data
+    assert "meta" in data
+    assert len(data["results"]) > 0
+    assert data["meta"]["project"] == "test"
+    assert data["meta"]["mode"] == "full"
+    assert data["meta"]["query"] == "JSON output"
+
+    first = data["results"][0]
+    assert "id" in first
+    assert "content" in first
+    assert "tags" in first
+    assert "score" in first
+    assert "source" in first
+    assert "created_at" in first
+
+
+@pytest.mark.asyncio
+async def test_search_json_probe_mode(mcp):
+    """output='json' + mode='probe' should include content_preview but not full content."""
+    import json
+
+    long_content = "A" * 300 + " unique marker"
+    await _call(mcp, "store_memory", {
+        "project": "test",
+        "content": long_content,
+        "tags": ["test"],
+    })
+
+    result = await _call(mcp, "search_memories", {
+        "project": "test",
+        "query": "AAAA",
+        "mode": "probe",
+        "output": "json",
+    })
+
+    data = json.loads(result)
+    first = data["results"][0]
+    assert "content_preview" in first
+    assert len(first["content_preview"]) <= 200
+    assert "content" not in first
+
+
+@pytest.mark.asyncio
+async def test_search_text_output_unchanged(mcp):
+    """output='text' (default) should return the same format as before."""
+    await _call(mcp, "store_memory", {
+        "project": "test",
+        "content": "Text output test",
+        "tags": ["test"],
+    })
+
+    result = await _call(mcp, "search_memories", {
+        "project": "test",
+        "query": "Text output",
+    })
+
+    # Should be the existing text format, not JSON
+    assert "[test]" in result
+
+
+@pytest.mark.asyncio
+async def test_expand_json_output(mcp):
+    """expand_memories with output='json' should return structured results."""
+    import json
+
+    store_result = await _call(mcp, "store_memory", {
+        "project": "test",
+        "content": "Expand JSON test",
+        "tags": ["test"],
+    })
+    mem_id = store_result.split("Stored memory ")[-1].strip()
+
+    result = await _call(mcp, "expand_memories", {
+        "project": "test",
+        "memory_ids": [mem_id],
+        "output": "json",
+    })
+
+    data = json.loads(result)
+    assert "results" in data
+    assert len(data["results"]) == 1
+    assert data["results"][0]["id"] == mem_id
+    assert data["results"][0]["content"] == "Expand JSON test"
+    assert "score" not in data["results"][0]

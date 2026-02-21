@@ -202,6 +202,7 @@ def create_server(
         min_score: float = 0.0,
         after: str | None = None,
         before: str | None = None,
+        output: str = "text",
     ) -> str:
         """Search project memories using natural language.
 
@@ -215,27 +216,61 @@ def create_server(
             min_score: Minimum similarity score to include (default 0.0, suppresses negative scores)
             after: Optional ISO 8601 date — only return memories created after this date
             before: Optional ISO 8601 date — only return memories created before this date
+            output: "text" (default) for formatted text, "json" for structured JSON
         """
+        import json as json_mod
+
         tags = _normalize_tags(tags)
         store = pool.get_store(project)
         results = store.search(query=query, tags=tags, limit=limit, after=after, before=before)
+
+        empty_json = json_mod.dumps({
+            "results": [],
+            "meta": {"query": query, "mode": mode, "project": project, "total": 0, "returned": 0},
+        })
+
         if not results:
-            return f"[{project}] No matching memories found."
+            return empty_json if output == "json" else f"[{project}] No matching memories found."
 
         results = [r for r in results if r["score"] >= min_score]
         if not results:
-            return f"[{project}] No matching memories found."
+            return empty_json if output == "json" else f"[{project}] No matching memories found."
+
+        if output == "json":
+            json_results = []
+            for r in results:
+                entry = {
+                    "id": r["id"],
+                    "tags": r["tags"],
+                    "score": round(r["score"], 4),
+                    "source": r["source"],
+                    "created_at": r["created_at"],
+                    "updated_at": r.get("updated_at", ""),
+                }
+                if mode == "probe":
+                    entry["content_preview"] = r["content"][:200]
+                else:
+                    entry["content"] = r["content"]
+                json_results.append(entry)
+            return json_mod.dumps({
+                "results": json_results,
+                "meta": {
+                    "query": query,
+                    "mode": mode,
+                    "project": project,
+                    "total": len(results),
+                    "returned": len(results),
+                },
+            })
 
         lines = []
         for r in results:
             if mode == "probe":
-                # Truncate to first newline or ~150 chars, whichever is shorter
                 content = r["content"]
                 first_line = content.split("\n", 1)[0]
                 snippet = first_line[:150]
                 if len(first_line) > 150:
                     snippet += "…"
-                # Prefer updated_at date if present, otherwise created_at
                 date = (r.get("updated_at") or r["created_at"] or "")[:10] or "unknown"
                 source_label = r["source"] or "session observation"
                 lines.append(
@@ -253,7 +288,7 @@ def create_server(
         return f"[{project}] {len(results)} results:\n\n" + "\n\n".join(lines)
 
     @mcp.tool()
-    def expand_memories(project: str, memory_ids: list[str]) -> str:
+    def expand_memories(project: str, memory_ids: list[str], output: str = "text") -> str:
         """Retrieve full content for specific memories by ID.
 
         Use after a probe-mode search to fetch details for relevant results.
@@ -261,11 +296,29 @@ def create_server(
         Args:
             project: Project name the memories belong to
             memory_ids: List of memory IDs to expand
+            output: "text" (default) for formatted text, "json" for structured JSON
         """
+        import json as json_mod
+
         store = pool.get_store(project)
         results = store.get_by_ids(memory_ids)
         if not results:
+            if output == "json":
+                return json_mod.dumps({"results": []})
             return f"[{project}] No memories found for the given IDs."
+
+        if output == "json":
+            json_results = []
+            for r in results:
+                json_results.append({
+                    "id": r["id"],
+                    "content": r["content"],
+                    "tags": r["tags"],
+                    "source": r["source"],
+                    "created_at": r["created_at"],
+                    "updated_at": r.get("updated_at", ""),
+                })
+            return json_mod.dumps({"results": json_results})
 
         lines = []
         for r in results:
