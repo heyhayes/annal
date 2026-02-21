@@ -1,5 +1,7 @@
 # Annal
 
+*A tool built by tools, for tools.*
+
 > Early stage — this project is under active development and not yet ready for production use. APIs, config formats, and storage schemas may change without notice. If you're curious, feel free to explore and open issues, but expect rough edges.
 
 Semantic memory server for AI agent teams. Stores, searches, and retrieves knowledge across sessions using ChromaDB with local ONNX embeddings, exposed as an MCP server.
@@ -8,13 +10,26 @@ Designed for multi-agent workflows where analysts, architects, developers, and r
 
 ## How it works
 
-Annal runs as a persistent MCP server (stdio or HTTP) and provides five core operations: store a memory, search memories by natural language, delete a memory, list topics, and initialize a project. Memories are embedded locally using all-MiniLM-L6-v2 (ONNX) and stored in ChromaDB, namespaced per project.
+Annal runs as a persistent MCP server (stdio or HTTP) and provides tools for storing, searching, updating, and managing memories. Memories are embedded locally using all-MiniLM-L6-v2 (ONNX) and stored in ChromaDB, namespaced per project.
 
-File indexing is optional. Point Annal at directories to watch and it will chunk markdown files by heading, track modification times for incremental re-indexing, and keep the store current via watchdog filesystem events.
+File indexing is optional. Point Annal at directories to watch and it will chunk markdown files by heading, track modification times for incremental re-indexing, and keep the store current via watchdog filesystem events. For large repos, file watching can be disabled per-project — agents trigger re-indexing on demand via `index_files`.
+
+Indexing is non-blocking. `init_project` and `index_files` return immediately while reconciliation runs in the background. Agents poll `index_status` to track progress, which shows elapsed time and chunk counts.
 
 Agent memories and file-indexed content coexist in the same search space but are distinguished by tags (`memory`, `decision`, `pattern`, `bug`, `indexed`, etc.), so agents can search everything or filter to just what they need.
 
+A web dashboard (HTMX + Jinja2) runs alongside the server, providing a browser-based view of memories with search, browsing, bulk delete, and live SSE updates when memories are stored or indexing is in progress.
+
 ## Quick start
+
+```bash
+pip install annal
+
+# One-shot setup: creates service, configures MCP clients, starts the daemon
+annal install
+```
+
+Or from source:
 
 ```bash
 git clone https://github.com/heyhayes/annal.git
@@ -28,7 +43,11 @@ annal
 annal --transport streamable-http
 ```
 
-## Claude Code integration
+`annal install` detects your OS and sets up the appropriate service (systemd on Linux, launchd on macOS, scheduled task on Windows). It also writes MCP client configs for Claude Code, Codex, and Gemini CLI.
+
+## MCP client integration
+
+### Claude Code
 
 Add to `~/.mcp.json` for stdio mode:
 
@@ -55,9 +74,13 @@ For HTTP daemon mode (recommended when running multiple concurrent sessions):
 }
 ```
 
+### Codex / Gemini CLI
+
+`annal install` writes the appropriate config files automatically. See `annal install` output for paths.
+
 ## Project setup
 
-On first use, either call the `init_project` tool with watch paths for file indexing, or just start storing memories — unknown projects are auto-registered in the config.
+On first use, call `init_project` with watch paths for file indexing, or just start storing memories — unknown projects are auto-registered in the config.
 
 ```
 init_project(project_name="myapp", watch_paths=["/home/user/projects/myapp"])
@@ -69,15 +92,21 @@ Every tool takes a `project` parameter. Use the directory name of the codebase y
 
 `store_memory` — Store knowledge with tags and source attribution. Near-duplicates (>95% similarity) are automatically skipped.
 
-`search_memories` — Natural language search across all memories, with optional tag filtering. Returns similarity scores and memory IDs.
+`search_memories` — Natural language search with optional tag filtering and similarity scores. Supports `mode="probe"` for compact summaries (saves context window) and `mode="full"` for complete content. Optional `min_score` filter suppresses low-relevance noise.
+
+`expand_memories` — Retrieve full content for specific memory IDs. Use after a probe search to fetch details for relevant results.
+
+`update_memory` — Revise content, tags, or source on an existing memory without losing its ID or creation timestamp. Tracks `updated_at` alongside the original.
 
 `delete_memory` — Remove a specific memory by ID.
 
 `list_topics` — Show all tags and their frequency counts.
 
-`init_project` — Register a project with watch paths for file indexing.
+`init_project` — Register a project with watch paths, patterns, and exclusions for file indexing. Indexing starts in the background and returns immediately.
 
-`index_files` — Manually re-index all watched files for a project.
+`index_files` — Full re-index: clears all file-indexed chunks and re-indexes from scratch. Use after changing exclude patterns to remove stale chunks.
+
+`index_status` — Per-project diagnostics: total chunks, file-indexed vs agent memory counts, indexing state with elapsed time, and last reconcile timestamp.
 
 ## Configuration
 
@@ -96,14 +125,24 @@ projects:
       - "**/*.toml"
       - "**/*.json"
     watch_exclude:
-      - "node_modules/**"
-      - ".git/**"
-      - ".venv/**"
+      - "**/node_modules/**"
+      - "**/vendor/**"
+      - "**/.git/**"
+      - "**/.venv/**"
+      - "**/__pycache__/**"
+      - "**/dist/**"
+      - "**/build/**"
+  large-repo:
+    watch: false          # disable file watching, use index_files on demand
+    watch_paths:
+      - /home/user/projects/large-repo
 ```
 
 ## Running as a daemon
 
-For always-on HTTP daemon mode, use the service scripts in `contrib/`. Each requires editing the path to your annal install before use.
+The recommended approach is `annal install`, which sets up the service for your OS automatically.
+
+For manual setup, use the service scripts in `contrib/`:
 
 ### Linux (systemd)
 
@@ -122,20 +161,24 @@ cp contrib/com.annal.server.plist ~/Library/LaunchAgents/
 launchctl load ~/Library/LaunchAgents/com.annal.server.plist
 ```
 
-To stop: `launchctl unload ~/Library/LaunchAgents/com.annal.server.plist`
-
 ### Windows (scheduled task)
 
 ```powershell
 .\contrib\annal-service.ps1 -Action install -AnnalPath "C:\path\to\annal\.venv\Scripts\annal.exe"
-
-# Start immediately without waiting for next logon:
 Start-ScheduledTask -TaskName "Annal MCP Server"
-
-# Check status / uninstall:
-.\contrib\annal-service.ps1 -Action status
-.\contrib\annal-service.ps1 -Action uninstall
 ```
+
+## Dashboard
+
+When running as an HTTP daemon, the dashboard is available at `http://localhost:9200`. It provides:
+
+- Memory browsing with pagination and filters (by type, source, tags)
+- Full-text search across memories
+- Expandable content previews
+- Bulk delete by filter
+- Live SSE updates when memories are stored, deleted, or indexing is in progress
+
+Disable with `--no-dashboard` if not needed.
 
 ## Development
 
@@ -143,6 +186,8 @@ Start-ScheduledTask -TaskName "Annal MCP Server"
 pip install -e ".[dev]"
 pytest -v
 ```
+
+95 tests covering store operations, search, indexing, file watching, dashboard routes, SSE events, and CLI installation.
 
 ## License
 

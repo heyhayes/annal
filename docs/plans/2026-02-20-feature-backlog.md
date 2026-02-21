@@ -23,9 +23,40 @@ Compiled from the initial spike. Items marked with [field] are things to validat
 - ~~`update_memory` tool~~ — revise content/tags on an existing memory without losing ID or `created_at`. Uses ChromaDB update.
 - ~~`annal install` one-shot setup~~ — detect OS, create service file (systemd/launchd/Windows), write `~/.mcp.json` for Claude Code, add Codex and Gemini config entries, start the daemon. One command from `pip install annal` to running.
 
+## Shipped (spike 4 — 2026-02-21)
+
+- ~~Async indexing~~ — `init_project` and `index_files` return immediately, reconciliation runs on a background thread with progress events
+- ~~`index_status` tool~~ — per-project diagnostics: chunk counts, indexing state with elapsed time, last reconcile timestamp
+- ~~StorePool thread safety~~ — `_stores` dict access protected by `threading.Lock`
+- ~~EventBus thread safety~~ — `_queues` list protected by `threading.Lock`
+- ~~Dashboard indexing badges~~ — SSE-driven badges show real-time indexing state on the dashboard index page
+- ~~`updated_at` in search/expand output~~ — search (full + probe) and expand now surface `updated_at` timestamps
+- ~~Mtime cache optimization~~ — `get_all_file_mtimes()` builds a source→mtime map in one O(m) pass instead of O(n*m) per-file scans. Kubernetes reconciliation went from 21+ minutes to 4 seconds.
+- ~~Optional file watching~~ — `watch: false` in project config skips watchdog/inotify for large repos. Agents use `index_files` for on-demand re-indexing.
+- ~~Heading depth fix~~ — indexer recognizes `#{1,6}` (was `#{1,3}`)
+- ~~`_annal_executable` launchd fix~~ — returns list for ProgramArguments compatibility
+- ~~Startup reconciliation events~~ — pushes `index_started`/`index_complete` events so dashboard shows activity during startup
+- ~~SSE slow client fix~~ — `q.get(timeout=30)` with keepalive instead of indefinite blocking
+- ~~HTMX SSE trigger cleanup~~ — removed redundant `sse-swap`, use only `hx-trigger`
+- ~~Spike 3 test gaps~~ — added tests for nonexistent update, no-op update, install idempotency, executable return type, h4-h6 headings
+- ~~Mtime float tolerance~~ — `abs(stored - current) < 0.5` instead of `==` for ChromaDB roundtrip precision
+
+## From spike 4 code review
+
+- Duplicate StorePool in `main()` — dashboard creates its own pool separate from the one inside `create_server()`, so they operate on independent ChromaDB connections. Can cause stale dashboard reads. Fix: expose the pool from `create_server` so both share it. P0.
+- `_index_locks` defaultdict race — safe under CPython GIL but fragile by contract. If two threads access a missing key simultaneously on free-threaded Python (PEP 703), they could get different Lock instances. Protect with `_lock` or use explicit lock creation. P2.
+- `_index_started` / `_last_reconcile` read without locks — written by the reconcile thread, read by `index_status`. Atomic under GIL but inconsistent with the spike's thread-safety-by-contract goal. P2.
+- `activity-indicator` JS references nonexistent element — `memories.html` calls `getElementById('activity-indicator')` but no such element exists. Throws TypeError on every index event. P1.
+- No `index_failed` event — design doc specifies it but it's not emitted. If reconciliation crashes, the dashboard badge stays stuck at "indexing..." indefinitely. P1.
+- SSE catches `Exception` too broadly — should catch `queue.Empty` specifically instead of swallowing all exceptions as keepalives. P2.
+- `config.save()` under `_lock` — YAML serialization + file I/O while holding the pool lock. Could block other threads if filesystem is slow. Move save outside the lock. P3.
+- `get_file_mtime` is dead code — superseded by `get_all_file_mtimes()` mtime cache. No callers remain. Remove. P3.
+- `httpx` missing from dev dependencies — used by SSE dashboard test but only available transitively. P3.
+- `browse()` loads entire collection — every page request fetches all chunks into memory, then slices. Known limitation (noted as non-goal in spike 4 design) but problematic for kubernetes-scale projects on the dashboard. P2.
+
 ## Parked
 
-- `annal --install-service` CLI command — detect OS and generate/install the appropriate service file (systemd, launchd, or Windows scheduled task) automatically instead of requiring manual setup from contrib/
+- ~~`annal --install-service` CLI command~~ — shipped as `annal install` in spike 3
 
 ## Dashboard
 
@@ -62,22 +93,22 @@ Compiled from the initial spike. Items marked with [field] are things to validat
 - `.gitignore` for `~/.annal/data` or equivalent — make sure ChromaDB storage doesn't accidentally get committed if someone puts a project inside a repo
 - [field] Cross-platform path handling — test on macOS and Windows. File watcher paths, config paths, and `os.path` usage should work across all three OSes.
 - Project name sanitization — collection names are `annal_{project}`, but project names aren't validated. Spaces, slashes, or special characters in project names will produce invalid collection names or ChromaDB errors. Add a slugify step (lowercase, `[a-z0-9_-]`, collapse others to `_`) and store the original display name separately if needed.
-- Markdown chunking heading depth — indexer currently matches `#{1,3}` only. Should go to `#{1,6}` since `####` through `######` are common in ADRs, specs, and detailed docs.
-- [field] mtime comparison on Windows/network mounts — reconciliation uses exact float equality for mtime checks. Some filesystems have coarse or drifty mtime precision. May need `round(mtime, 3)` or an epsilon comparison to avoid unnecessary re-indexing.
+- ~~Markdown chunking heading depth~~ — fixed in spike 4: `#{1,6}`
+- ~~mtime comparison precision~~ — fixed in spike 4: tolerance-based `abs(stored - current) < 0.5`
 - [field] Cold start performance — first query loads the ONNX embedding model. Is the delay acceptable? Does it cause MCP timeouts?
-- Watcher resilience — `index_file` can raise on permission errors, broken symlinks, or unexpected file types. The watcher's `on_modified`/`on_created` handlers don't wrap the call in try/except, so a single bad file crashes the watcher thread. Add error handling so the watcher logs and continues.
-- [field] Large repo behavior — what happens with a repo that has thousands of markdown files? Does reconciliation block for too long? Is the mtime check fast enough at scale?
+- ~~Watcher resilience~~ — shipped in spike 3
+- ~~Large repo behavior~~ — addressed in spike 4: mtime cache optimization (O(n+m) instead of O(n*m)), optional `watch: false` for large repos, async reconciliation
 
 ## New tools
 
-- `update_memory` — revise an existing memory's content and/or tags without losing its ID or `created_at` timestamp. Tracks an `updated_at` alongside the original. Straightforward since ChromaDB supports upsert. Currently agents have to delete and re-store, which loses identity.
+- ~~`update_memory`~~ — shipped in spike 3
 - `add_tags` / `retag_memory` — modify tags on an existing memory after storage. If an agent realizes a set of memories should have had a `billing` tag, there's currently no recourse. Just a metadata update on the ChromaDB document.
-- `index_status` — return per-project diagnostics: how many files are being watched, how many chunks indexed, when reconciliation last ran, which files failed (if error tracking is added). Agents are currently flying blind about what's in the file-indexed portion of the store.
+- ~~`index_status`~~ — shipped in spike 4
 - Source-scoped search — add an optional `source_prefix` filter to `search_memories` so agents can search within a specific file's chunks or only within agent memories. Useful when the agent knows the knowledge came from a specific document.
 - Time window filter — add optional `after` / `before` date parameters to `search_memories`. ChromaDB metadata supports `$gte`/`$lte` on `created_at`, so this is low-cost. Useful for scoping searches to recent decisions or filtering out stale context.
 - CLI subcommands — extend the `annal` entry point beyond just running the server. Add `annal search "query" --project foo --tags decision`, `annal store --project foo --tags decision`, `annal topics --project foo`. Makes Annal usable from the terminal without the agent stack, good for debugging and manual curation.
 - Import/export — export a project to JSONL (id, text, metadata), import from JSONL. Useful for testing, portability, backups, and open-source readiness. Simple format, no external dependencies.
-- `init_project` patterns/excludes — the tool currently accepts `watch_paths` but not `watch_patterns` or `watch_exclude`, so users have to hand-edit the YAML config for those. Accept them as optional parameters so setup is a single tool call.
+- ~~`init_project` patterns/excludes~~ — shipped in spike 2
 
 ## Data management
 
@@ -92,18 +123,18 @@ Compiled from the initial spike. Items marked with [field] are things to validat
 
 - [field] Concurrent write safety — multiple agents storing memories simultaneously via the HTTP daemon. Does ChromaDB handle this gracefully or do we need locking?
 - [field] Memory isolation between agents — the tag conventions (agent:role-name) provide soft isolation. Is that sufficient or do agents pollute each other's search results?
-- Store pool thread safety — the StorePool dict isn't protected by a lock. If two requests hit get_store for a new project simultaneously, could we get a race condition?
+- ~~Store pool thread safety~~ — fixed in spike 4: `threading.Lock` on `_stores` dict
 - Reconcile creates throwaway FileWatcher — `pool.reconcile_project` instantiates a full FileWatcher just to call `.reconcile()`, then discards it. `start_watcher` then creates another one. The reconcile logic could be a standalone function or live on the pool directly.
 - Cross-project search — allow agents to search across multiple project collections so experience from one codebase can inform work in another. A BA agent who learned domain patterns in project X should be able to draw on that knowledge in project Y. Fan-out approach: query all (or specified) project collections in parallel, merge results by similarity score. Simpler than agent-scoped collections because agents don't need to decide at storage time whether knowledge is "project-specific" or "portable." Could add an optional `projects` parameter to `search_memories` (list of project names, or `"*"` for all).
 
 ## From spike 3 code reviews
 
-- `updated_at` inconsistency — `get_by_ids` returns `updated_at` but `search()` and `browse()` do not. Memories that have been updated show the field in `expand_memories` but not in `search_memories` or the dashboard. Add `updated_at` to all retrieval methods for consistency.
-- EventBus thread safety — `_queues` list is mutated from multiple threads. CPython GIL makes this safe in practice, but a `threading.Lock` around subscribe/unsubscribe/push would make it correct by contract.
-- SSE slow client handling — `run_in_executor(None, q.get)` blocks a thread pool thread indefinitely if no events are pushed and the client disconnects. Use `q.get(timeout=N)` in a loop so threads can check for cancellation.
-- HTMX SSE trigger redundancy — `memories.html` uses both `sse-swap` and `hx-trigger` for the same event (`memory_stored`), which is confusing. Simplify to use only `hx-trigger` with `sse-connect`.
-- `_annal_executable()` fallback breaks launchd — the `python -m annal.server` fallback returns a single string that becomes one `<string>` element in the plist, but launchd needs separate elements per argument. Only affects users running from raw checkouts (not `pip install`).
-- Test gaps: no tests for `update_memory` with nonexistent ID, no-op update_memory guard, update of source-only, Codex/Gemini uninstall cleanup, install idempotency (calling install twice).
+- ~~`updated_at` inconsistency~~ — fixed in spike 4: search/browse/expand all return `updated_at`
+- ~~EventBus thread safety~~ — fixed in spike 4: `threading.Lock` on subscribe/unsubscribe/push
+- ~~SSE slow client handling~~ — fixed in spike 4: `q.get(timeout=30)` with keepalive loop
+- ~~HTMX SSE trigger redundancy~~ — fixed in spike 4: simplified to `hx-trigger` only
+- ~~`_annal_executable()` fallback breaks launchd~~ — fixed in spike 4: returns list
+- ~~Test gaps~~ — fixed in spike 4: added nonexistent update, no-op update, install idempotency, executable return type, heading depth tests
 - `annal serve` subcommand may be dead weight — existing service files and scripts use bare `annal --transport ...`. The `serve` subcommand adds argparse complexity for no current consumers.
 
 ## Future considerations (not for next spike)
