@@ -201,7 +201,7 @@ pip install -e ".[dev]"
 pytest -v
 ```
 
-95 tests covering store operations, search, indexing, file watching, dashboard routes, SSE events, and CLI installation.
+Tests cover store operations, search, indexing, file watching, dashboard routes, SSE events, and CLI installation.
 
 ## License
 

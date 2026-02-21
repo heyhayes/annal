@@ -196,16 +196,6 @@ class MemoryStore:
                 mtimes[file_key] = float(mtime)
         return mtimes
 
-    def get_file_mtime(self, source_prefix: str) -> float | None:
-        """Get the stored mtime for a file's chunks. Returns None if not found."""
-        for _, meta in self._iter_metadata():
-            if meta.get("source", "").startswith(source_prefix):
-                mtime = meta.get("file_mtime")
-                if mtime is not None:
-                    return float(mtime)
-                return None
-        return None
-
     def browse(
         self,
         offset: int = 0,
