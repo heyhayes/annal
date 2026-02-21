@@ -106,6 +106,9 @@ class FileWatcher:
 
     def reconcile(self, progress_callback: Callable[[int], None] | None = None) -> int:
         """Scan all watch paths and index new or changed files. Returns file count."""
+        # Build mtime cache once — O(m) — instead of scanning all metadata per file
+        mtime_cache = self._store.get_all_file_mtimes()
+
         total = 0
         skipped = 0
         for watch_path in self._config.watch_paths:
@@ -122,7 +125,7 @@ class FileWatcher:
 
                     file_path = str(path)
                     current_mtime = path.stat().st_mtime
-                    stored_mtime = self._store.get_file_mtime(f"file:{file_path}")
+                    stored_mtime = mtime_cache.get(f"file:{file_path}")
 
                     if stored_mtime is not None and abs(stored_mtime - current_mtime) < 0.5:
                         skipped += 1

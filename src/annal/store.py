@@ -177,6 +177,25 @@ class MemoryStore:
             for i in range(0, len(ids_to_delete), 5000):
                 self._collection.delete(ids=ids_to_delete[i:i + 5000])
 
+    def get_all_file_mtimes(self) -> dict[str, float]:
+        """Build a source-prefix -> mtime lookup map for all file-indexed chunks.
+
+        Returns a dict mapping "file:/path/to/file" to the stored mtime.
+        Used by reconcile() to avoid O(n*m) per-file metadata scans.
+        """
+        mtimes: dict[str, float] = {}
+        for _, meta in self._iter_metadata():
+            source = meta.get("source", "")
+            if not source.startswith("file:"):
+                continue
+            mtime = meta.get("file_mtime")
+            if mtime is None:
+                continue
+            file_key = source.split("|")[0]
+            if file_key not in mtimes:
+                mtimes[file_key] = float(mtime)
+        return mtimes
+
     def get_file_mtime(self, source_prefix: str) -> float | None:
         """Get the stored mtime for a file's chunks. Returns None if not found."""
         for _, meta in self._iter_metadata():
