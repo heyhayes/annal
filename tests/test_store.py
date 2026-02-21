@@ -355,3 +355,48 @@ def test_search_overfetch_with_tag_filter(tmp_data_dir):
     results = store.search("memory", tags=["signal"], limit=5)
     assert len(results) == 3
     assert all("Signal" in r["content"] for r in results)
+
+
+def test_fuzzy_tag_matching(tmp_data_dir):
+    """Searching with tags=['auth'] should find memories tagged 'authentication'."""
+    store = MemoryStore(data_dir=tmp_data_dir, project="fuzzy_tags")
+    store.store(content="Auth decision about JWT tokens", tags=["authentication", "decision"])
+    store.store(content="Frontend uses React", tags=["frontend"])
+
+    results = store.search("decision", tags=["auth"], limit=5)
+    assert len(results) == 1
+    assert "JWT" in results[0]["content"]
+
+
+def test_fuzzy_tag_no_false_positives(tmp_data_dir):
+    """Fuzzy matching should not match unrelated tags."""
+    store = MemoryStore(data_dir=tmp_data_dir, project="fuzzy_strict")
+    store.store(content="Caching layer uses Redis", tags=["caching", "infrastructure"])
+    store.store(content="Auth uses OAuth", tags=["authentication"])
+
+    # 'auth' should match 'authentication' but not 'caching'
+    results = store.search("uses", tags=["auth"], limit=5)
+    assert len(results) == 1
+    assert "OAuth" in results[0]["content"]
+
+
+def test_fuzzy_tag_exact_still_works(tmp_data_dir):
+    """Exact tag matches should still work."""
+    store = MemoryStore(data_dir=tmp_data_dir, project="fuzzy_exact")
+    store.store(content="Billing uses Stripe", tags=["billing"])
+    store.store(content="Frontend uses React", tags=["frontend"])
+
+    results = store.search("uses", tags=["billing"], limit=5)
+    assert len(results) == 1
+    assert "Stripe" in results[0]["content"]
+
+
+def test_fuzzy_tag_in_browse(tmp_data_dir):
+    """browse() with tags should also use fuzzy matching."""
+    store = MemoryStore(data_dir=tmp_data_dir, project="fuzzy_browse")
+    store.store(content="Auth decision", tags=["authentication"])
+    store.store(content="Frontend stuff", tags=["frontend"])
+
+    results, total = store.browse(tags=["auth"])
+    assert total == 1
+    assert "Auth" in results[0]["content"]

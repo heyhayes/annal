@@ -8,6 +8,10 @@ import uuid
 from datetime import datetime, timezone
 
 import chromadb
+import numpy as np
+from chromadb.utils.embedding_functions import ONNXMiniLM_L6_V2
+
+FUZZY_TAG_THRESHOLD = 0.75
 
 _ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2})?")
 
@@ -31,6 +35,49 @@ class MemoryStore:
             name=f"annal_{project}",
             metadata={"hnsw:space": "cosine"},
         )
+        self._embed_fn = ONNXMiniLM_L6_V2()
+        self._tag_cache: dict[str, np.ndarray] | None = None
+
+    def _invalidate_tag_cache(self) -> None:
+        """Clear the tag embedding cache. Called after store/update/delete."""
+        self._tag_cache = None
+
+    def _get_tag_embeddings(self) -> dict[str, np.ndarray]:
+        """Get or build a cache of tag -> embedding for all tags in the store."""
+        if self._tag_cache is not None:
+            return self._tag_cache
+        topics = self.list_topics()
+        if not topics:
+            self._tag_cache = {}
+            return self._tag_cache
+        tag_names = list(topics.keys())
+        embeddings = self._embed_fn(tag_names)
+        self._tag_cache = {name: np.array(emb) for name, emb in zip(tag_names, embeddings)}
+        return self._tag_cache
+
+    def _expand_tags(self, filter_tags: list[str]) -> set[str]:
+        """Expand filter tags to include semantically similar known tags."""
+        tag_embeddings = self._get_tag_embeddings()
+        if not tag_embeddings:
+            return set(filter_tags)
+
+        expanded = set(filter_tags)
+        filter_embeddings = self._embed_fn(filter_tags)
+
+        for i, filter_tag in enumerate(filter_tags):
+            filter_emb = np.array(filter_embeddings[i])
+            filter_norm = np.linalg.norm(filter_emb)
+            if filter_norm == 0:
+                continue
+            for known_tag, known_emb in tag_embeddings.items():
+                known_norm = np.linalg.norm(known_emb)
+                if known_norm == 0:
+                    continue
+                similarity = np.dot(filter_emb, known_emb) / (filter_norm * known_norm)
+                if similarity >= FUZZY_TAG_THRESHOLD:
+                    expanded.add(known_tag)
+
+        return expanded
 
     def store(
         self,
@@ -54,6 +101,7 @@ class MemoryStore:
             documents=[content],
             metadatas=[metadata],
         )
+        self._invalidate_tag_cache()
         return mem_id
 
     def search(
@@ -88,12 +136,15 @@ class MemoryStore:
         if not results["ids"] or not results["ids"][0]:
             return []
 
+        # Expand tags for fuzzy matching
+        expanded_tags = self._expand_tags(tags) if tags else None
+
         memories = []
         for i, mem_id in enumerate(results["ids"][0]):
             meta = results["metadatas"][0][i]
             mem_tags = json.loads(meta["tags"])
 
-            if tags and not any(t in mem_tags for t in tags):
+            if expanded_tags and not any(t in mem_tags for t in expanded_tags):
                 continue
 
             # Temporal filtering (ISO 8601 strings are lexicographically orderable)
@@ -141,6 +192,7 @@ class MemoryStore:
 
     def delete(self, mem_id: str) -> None:
         self._collection.delete(ids=[mem_id])
+        self._invalidate_tag_cache()
 
     def update(
         self,
@@ -172,11 +224,13 @@ class MemoryStore:
             documents=[new_doc],
             metadatas=[new_meta],
         )
+        self._invalidate_tag_cache()
 
     def delete_many(self, ids: list[str]) -> None:
         """Delete multiple memories by ID in batches."""
         for i in range(0, len(ids), 5000):
             self._collection.delete(ids=ids[i:i + 5000])
+        self._invalidate_tag_cache()
 
     def _iter_metadata(self) -> list[tuple[str, dict]]:
         """Iterate all (id, metadata) pairs in batches to avoid SQLite variable limits."""
@@ -210,6 +264,7 @@ class MemoryStore:
         if ids_to_delete:
             for i in range(0, len(ids_to_delete), 5000):
                 self._collection.delete(ids=ids_to_delete[i:i + 5000])
+            self._invalidate_tag_cache()
 
     def get_all_file_mtimes(self) -> dict[str, float]:
         """Build a source-prefix -> mtime lookup map for all file-indexed chunks.
@@ -274,6 +329,7 @@ class MemoryStore:
             return results, total
 
         # Slow path: post-query filtering requires scanning
+        expanded_tags = self._expand_tags(tags) if tags else None
         batch_size = 5000
         total_docs = self._collection.count()
         all_items: list[dict] = []
@@ -290,7 +346,7 @@ class MemoryStore:
 
                 if source_prefix and not meta.get("source", "").startswith(source_prefix):
                     continue
-                if tags and not any(t in mem_tags for t in tags):
+                if expanded_tags and not any(t in mem_tags for t in expanded_tags):
                     continue
 
                 all_items.append({
