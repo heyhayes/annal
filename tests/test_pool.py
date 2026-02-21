@@ -221,3 +221,22 @@ def test_get_index_lock_concurrent_same_lock(tmp_data_dir, tmp_config_path):
 
     assert len(locks) == 10
     assert len(set(id(l) for l in locks)) == 1
+
+
+def test_shutdown_waits_for_reconciliation(tmp_data_dir, tmp_config_path, tmp_path):
+    """shutdown() should wait for in-flight reconciliation to complete."""
+    watch_dir = tmp_path / "docs"
+    watch_dir.mkdir()
+    (watch_dir / "test.md").write_text("# Hello\nWorld content\n")
+
+    config = AnnalConfig(config_path=tmp_config_path, data_dir=tmp_data_dir)
+    config.add_project("shutdowntest", watch_paths=[str(watch_dir)])
+    config.save()
+    pool = StorePool(config)
+
+    pool.reconcile_project_async("shutdowntest")
+    pool.shutdown(timeout=10.0)
+
+    # After shutdown, reconciliation should have completed
+    store = pool.get_store("shutdowntest")
+    assert store.count() > 0

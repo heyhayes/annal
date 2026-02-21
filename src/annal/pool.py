@@ -26,6 +26,7 @@ class StorePool:
         self._index_locks: dict[str, threading.Lock] = {}
         self._index_started: dict[str, datetime] = {}
         self._last_reconcile: dict[str, dict] = {}
+        self._reconcile_threads: list[threading.Thread] = []
 
     def _get_index_lock(self, project: str) -> threading.Lock:
         """Get or create an index lock for a project (thread-safe)."""
@@ -108,9 +109,14 @@ class StorePool:
             finally:
                 with self._lock:
                     self._index_started.pop(project, None)
+                    self._reconcile_threads = [
+                        t for t in self._reconcile_threads if t.is_alive()
+                    ]
                 lock.release()
 
         thread = threading.Thread(target=_run, daemon=True)
+        with self._lock:
+            self._reconcile_threads.append(thread)
         thread.start()
 
     def is_indexing(self, project: str) -> bool:
@@ -148,8 +154,18 @@ class StorePool:
         self._watchers[project] = watcher
         logger.info("File watcher started for project '%s'", project)
 
-    def shutdown(self) -> None:
-        """Stop all active file watchers."""
+    def shutdown(self, timeout: float = 10.0) -> None:
+        """Stop all active file watchers and wait for in-flight reconciliation."""
+        # Wait for reconciliation threads to finish
+        with self._lock:
+            threads = list(self._reconcile_threads)
+        for thread in threads:
+            thread.join(timeout=timeout)
+        with self._lock:
+            self._reconcile_threads = [
+                t for t in self._reconcile_threads if t.is_alive()
+            ]
+
         for project, watcher in self._watchers.items():
             logger.info("Stopping watcher for project '%s'", project)
             watcher.stop()
