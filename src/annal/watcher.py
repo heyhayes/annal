@@ -124,7 +124,7 @@ class FileWatcher:
                     current_mtime = path.stat().st_mtime
                     stored_mtime = self._store.get_file_mtime(f"file:{file_path}")
 
-                    if stored_mtime is not None and stored_mtime == current_mtime:
+                    if stored_mtime is not None and abs(stored_mtime - current_mtime) < 0.5:
                         skipped += 1
                         continue
 
