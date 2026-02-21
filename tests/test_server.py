@@ -661,3 +661,13 @@ async def test_search_memories_cross_project_star(mcp_with_config):
     })
     data = json.loads(result)
     assert len(data["results"]) == 2
+
+    # ["*"] (list with wildcard) should behave the same as bare "*"
+    result_list = await _call(mcp, "search_memories", {
+        "project": "star_a",
+        "query": "memory",
+        "projects": ["*"],
+        "output": "json",
+    })
+    data_list = json.loads(result_list)
+    assert len(data_list["results"]) == 2

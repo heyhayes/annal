@@ -253,7 +253,8 @@ def create_server(
         tags = _normalize_tags(tags)
 
         # Determine project list for search
-        if projects == "*":
+        # Normalize: ["*"] and "*" both mean "all projects"
+        if projects == "*" or projects == ["*"]:
             search_projects = list(config.projects.keys())
             if project not in search_projects:
                 search_projects.append(project)
