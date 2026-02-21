@@ -46,12 +46,15 @@ class MemoryStore:
         query: str,
         limit: int = 5,
         tags: list[str] | None = None,
+        after: str | None = None,
+        before: str | None = None,
     ) -> list[dict]:
         if self._collection.count() == 0:
             return []
 
-        # Over-fetch when filtering by tags since filtering is post-query
-        limit_query = max(limit * 3, 20) if tags else limit
+        # Over-fetch when filtering post-query (tags or temporal)
+        needs_overfetch = tags or after or before
+        limit_query = max(limit * 3, 20) if needs_overfetch else limit
 
         results = self._collection.query(
             query_texts=[query],
@@ -67,6 +70,13 @@ class MemoryStore:
             mem_tags = json.loads(meta["tags"])
 
             if tags and not any(t in mem_tags for t in tags):
+                continue
+
+            # Temporal filtering (ISO 8601 strings are lexicographically orderable)
+            created_at = meta.get("created_at", "")
+            if after and created_at < after:
+                continue
+            if before and created_at > before:
                 continue
 
             distance = results["distances"][0][i] if results["distances"] else 0.0
@@ -195,16 +205,6 @@ class MemoryStore:
             if file_key not in mtimes:
                 mtimes[file_key] = float(mtime)
         return mtimes
-
-    def get_file_mtime(self, source_prefix: str) -> float | None:
-        """Get the stored mtime for a file's chunks. Returns None if not found."""
-        for _, meta in self._iter_metadata():
-            if meta.get("source", "").startswith(source_prefix):
-                mtime = meta.get("file_mtime")
-                if mtime is not None:
-                    return float(mtime)
-                return None
-        return None
 
     def browse(
         self,

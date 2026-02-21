@@ -1,9 +1,11 @@
+import queue as queue_mod
 import threading
 import time
 
 import pytest
 from annal.pool import StorePool
 from annal.config import AnnalConfig, ProjectConfig
+from annal.events import event_bus
 
 
 @pytest.fixture
@@ -138,3 +140,64 @@ def test_get_last_reconcile(tmp_data_dir, tmp_config_path, tmp_path):
     assert info is not None
     assert "timestamp" in info
     assert "file_count" in info
+
+
+def test_reconcile_project_async_emits_index_failed_on_error(tmp_data_dir, tmp_config_path, tmp_path):
+    """If reconciliation fails, an index_failed event should be emitted."""
+    from unittest.mock import patch
+
+    watch_dir = tmp_path / "docs"
+    watch_dir.mkdir()
+    (watch_dir / "test.md").write_text("# Test\n")
+
+    config = AnnalConfig(config_path=tmp_config_path, data_dir=tmp_data_dir)
+    config.add_project("failtest", watch_paths=[str(watch_dir)])
+    config.save()
+    pool = StorePool(config)
+
+    events = []
+    q = event_bus.subscribe()
+
+    # Force reconcile to raise
+    with patch("annal.watcher.FileWatcher.reconcile", side_effect=RuntimeError("boom")):
+        pool.reconcile_project_async("failtest")
+        time.sleep(2)
+
+    # Drain the queue
+    while True:
+        try:
+            events.append(q.get_nowait())
+        except queue_mod.Empty:
+            break
+    event_bus.unsubscribe(q)
+
+    # Should have emitted index_failed
+    failed_events = [e for e in events if e.type == "index_failed"]
+    assert len(failed_events) == 1
+    assert failed_events[0].project == "failtest"
+    assert "boom" in failed_events[0].detail
+
+    # Pool should not be stuck in indexing state after failure
+    assert pool.is_indexing("failtest") is False
+
+
+def test_get_index_lock_returns_same_lock(tmp_data_dir, tmp_config_path):
+    """_get_index_lock should return the same lock for the same project."""
+    config = AnnalConfig(config_path=tmp_config_path, data_dir=tmp_data_dir)
+    config.save()
+    pool = StorePool(config)
+
+    lock1 = pool._get_index_lock("testproject")
+    lock2 = pool._get_index_lock("testproject")
+    assert lock1 is lock2
+
+
+def test_get_index_lock_different_projects(tmp_data_dir, tmp_config_path):
+    """_get_index_lock should return different locks for different projects."""
+    config = AnnalConfig(config_path=tmp_config_path, data_dir=tmp_data_dir)
+    config.save()
+    pool = StorePool(config)
+
+    lock1 = pool._get_index_lock("project_a")
+    lock2 = pool._get_index_lock("project_b")
+    assert lock1 is not lock2

@@ -92,11 +92,13 @@ def index_file(store: MemoryStore, file_path: str, file_mtime: float | None = No
     else:
         chunks = [{"heading": path.name, "content": content}]
 
-    # Store each chunk
+    # Store each chunk with heading context prepended for better embeddings
     for chunk in chunks:
         tags = _derive_tags(path)
+        heading_context = chunk["heading"]
+        content_with_context = f"{heading_context}: {chunk['content']}"
         store.store(
-            content=chunk["content"],
+            content=content_with_context,
             tags=tags,
             source=f"file:{file_path}|{chunk['heading']}",
             chunk_type="file-indexed",

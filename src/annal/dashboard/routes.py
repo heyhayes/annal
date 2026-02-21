@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import math
+import queue
 from pathlib import Path
 
 from starlette.requests import Request
@@ -229,8 +230,8 @@ def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
                             None, lambda: q.get(timeout=30)
                         )
                         yield f"event: {event.type}\ndata: {event.project}|{event.detail}\n\n"
-                    except Exception:
-                        # queue.Empty on timeout — send keepalive comment
+                    except queue.Empty:
+                        # Timeout — send keepalive comment
                         yield ": keepalive\n\n"
             except asyncio.CancelledError:
                 pass

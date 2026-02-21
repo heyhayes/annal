@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import logging
 import threading
-from collections import defaultdict
 from collections.abc import Callable
 from datetime import datetime, timezone
 
 from annal.config import AnnalConfig
+from annal.events import event_bus, Event
 from annal.store import MemoryStore
 from annal.watcher import FileWatcher
 
@@ -23,9 +23,16 @@ class StorePool:
         self._stores: dict[str, MemoryStore] = {}
         self._watchers: dict[str, FileWatcher] = {}
         self._lock = threading.Lock()
-        self._index_locks: dict[str, threading.Lock] = defaultdict(threading.Lock)
+        self._index_locks: dict[str, threading.Lock] = {}
         self._index_started: dict[str, datetime] = {}
         self._last_reconcile: dict[str, dict] = {}
+
+    def _get_index_lock(self, project: str) -> threading.Lock:
+        """Get or create an index lock for a project (thread-safe)."""
+        with self._lock:
+            if project not in self._index_locks:
+                self._index_locks[project] = threading.Lock()
+            return self._index_locks[project]
 
     def get_store(self, project: str) -> MemoryStore:
         """Get or create a MemoryStore for the given project."""
@@ -66,7 +73,7 @@ class StorePool:
     ) -> None:
         """Kick off reconciliation on a background thread. Returns immediately."""
         def _run() -> None:
-            lock = self._index_locks[project]
+            lock = self._get_index_lock(project)
             if not lock.acquire(blocking=False):
                 logger.info("Indexing already in progress for '%s', waiting", project)
                 lock.acquire()
@@ -87,6 +94,11 @@ class StorePool:
                 logger.info("Reconciled %d files for project '%s'", count, project)
                 if on_complete:
                     on_complete(count)
+            except Exception as exc:
+                logger.exception("Reconciliation failed for project '%s'", project)
+                event_bus.push(Event(
+                    type="index_failed", project=project, detail=str(exc)
+                ))
             finally:
                 self._index_started.pop(project, None)
                 lock.release()
@@ -96,7 +108,7 @@ class StorePool:
 
     def is_indexing(self, project: str) -> bool:
         """Check if a project is currently being indexed."""
-        lock = self._index_locks[project]
+        lock = self._get_index_lock(project)
         acquired = lock.acquire(blocking=False)
         if acquired:
             lock.release()

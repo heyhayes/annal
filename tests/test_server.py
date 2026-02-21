@@ -26,7 +26,8 @@ def server_env(tmp_data_dir, tmp_config_path, tmp_path):
 
 @pytest.fixture
 def mcp(server_env):
-    return create_server(config_path=server_env["config_path"])
+    mcp, _pool = create_server(config_path=server_env["config_path"])
+    return mcp
 
 
 async def _call(mcp, name: str, args: dict) -> str:
@@ -38,13 +39,34 @@ async def _call(mcp, name: str, args: dict) -> str:
 
 
 def test_create_server(server_env):
-    mcp = create_server(config_path=server_env["config_path"])
+    mcp, pool = create_server(config_path=server_env["config_path"])
     assert mcp is not None
     assert mcp.name == "annal"
 
 
+def test_create_server_returns_pool(server_env):
+    """create_server should return both mcp and pool."""
+    result = create_server(config_path=server_env["config_path"])
+    assert isinstance(result, tuple)
+    mcp, pool = result
+    assert mcp.name == "annal"
+    assert pool is not None
+
+
+def test_create_server_accepts_external_pool(server_env):
+    """create_server should use a provided pool instead of creating its own."""
+    from annal.pool import StorePool
+    config = AnnalConfig.load(server_env["config_path"])
+    external_pool = StorePool(config)
+    mcp, returned_pool = create_server(
+        config_path=server_env["config_path"],
+        pool=external_pool,
+    )
+    assert returned_pool is external_pool
+
+
 def test_server_has_instructions(server_env):
-    mcp = create_server(config_path=server_env["config_path"])
+    mcp, _pool = create_server(config_path=server_env["config_path"])
     assert mcp.instructions == SERVER_INSTRUCTIONS
 
 
@@ -180,7 +202,7 @@ async def test_search_on_empty_project(mcp):
 
 @pytest.mark.asyncio
 async def test_init_project_with_custom_excludes(server_env):
-    mcp = create_server(config_path=server_env["config_path"])
+    mcp, _pool = create_server(config_path=server_env["config_path"])
     result = await _call(mcp, "init_project", {
         "project_name": "customproj",
         "watch_paths": [server_env["watch_dir"]],
@@ -199,7 +221,7 @@ async def test_index_files_clears_stale_chunks(server_env):
     """index_files should remove old file-indexed chunks before re-indexing."""
     import time
 
-    mcp = create_server(config_path=server_env["config_path"])
+    mcp, _pool = create_server(config_path=server_env["config_path"])
     watch_dir = server_env["watch_dir"]
 
     # Init project and index files
@@ -346,7 +368,7 @@ async def test_search_min_score_zero_allows_positive(mcp):
 @pytest.mark.asyncio
 async def test_init_project_returns_immediately(server_env):
     """init_project should return immediately with indexing message."""
-    mcp = create_server(config_path=server_env["config_path"])
+    mcp, _pool = create_server(config_path=server_env["config_path"])
     result = await _call(mcp, "init_project", {
         "project_name": "asyncinit",
         "watch_paths": [server_env["watch_dir"]],
@@ -359,7 +381,7 @@ async def test_index_files_returns_immediately(server_env):
     """index_files should return immediately with progress message."""
     import time
 
-    mcp = create_server(config_path=server_env["config_path"])
+    mcp, _pool = create_server(config_path=server_env["config_path"])
     await _call(mcp, "init_project", {
         "project_name": "asyncidx",
         "watch_paths": [server_env["watch_dir"]],
@@ -402,3 +424,139 @@ async def test_update_memory_no_op(mcp):
         "memory_id": "doesnt-matter",
     })
     assert "nothing to update" in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_search_with_temporal_filter(mcp):
+    """search_memories should accept after/before date params."""
+    await _call(mcp, "store_memory", {
+        "project": "test",
+        "content": "Decision made today about API design",
+        "tags": ["decision"],
+    })
+
+    from datetime import datetime, timezone, timedelta
+    tomorrow = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
+    yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+
+    # Should find with yesterday-tomorrow range
+    result = await _call(mcp, "search_memories", {
+        "project": "test",
+        "query": "API design",
+        "after": yesterday,
+        "before": tomorrow,
+    })
+    assert "API design" in result
+
+    # Should not find with future-only range
+    result = await _call(mcp, "search_memories", {
+        "project": "test",
+        "query": "API design",
+        "after": tomorrow,
+    })
+    assert "No matching memories" in result
+
+
+@pytest.mark.asyncio
+async def test_search_json_output(mcp):
+    """output='json' should return valid JSON with results and meta."""
+    import json
+
+    await _call(mcp, "store_memory", {
+        "project": "test",
+        "content": "JSON output test memory",
+        "tags": ["test"],
+        "source": "test-source",
+    })
+
+    result = await _call(mcp, "search_memories", {
+        "project": "test",
+        "query": "JSON output",
+        "output": "json",
+    })
+
+    data = json.loads(result)
+    assert "results" in data
+    assert "meta" in data
+    assert len(data["results"]) > 0
+    assert data["meta"]["project"] == "test"
+    assert data["meta"]["mode"] == "full"
+    assert data["meta"]["query"] == "JSON output"
+
+    first = data["results"][0]
+    assert "id" in first
+    assert "content" in first
+    assert "tags" in first
+    assert "score" in first
+    assert "source" in first
+    assert "created_at" in first
+
+
+@pytest.mark.asyncio
+async def test_search_json_probe_mode(mcp):
+    """output='json' + mode='probe' should include content_preview but not full content."""
+    import json
+
+    long_content = "A" * 300 + " unique marker"
+    await _call(mcp, "store_memory", {
+        "project": "test",
+        "content": long_content,
+        "tags": ["test"],
+    })
+
+    result = await _call(mcp, "search_memories", {
+        "project": "test",
+        "query": "AAAA",
+        "mode": "probe",
+        "output": "json",
+    })
+
+    data = json.loads(result)
+    first = data["results"][0]
+    assert "content_preview" in first
+    assert len(first["content_preview"]) <= 200
+    assert "content" not in first
+
+
+@pytest.mark.asyncio
+async def test_search_text_output_unchanged(mcp):
+    """output='text' (default) should return the same format as before."""
+    await _call(mcp, "store_memory", {
+        "project": "test",
+        "content": "Text output test",
+        "tags": ["test"],
+    })
+
+    result = await _call(mcp, "search_memories", {
+        "project": "test",
+        "query": "Text output",
+    })
+
+    # Should be the existing text format, not JSON
+    assert "[test]" in result
+
+
+@pytest.mark.asyncio
+async def test_expand_json_output(mcp):
+    """expand_memories with output='json' should return structured results."""
+    import json
+
+    store_result = await _call(mcp, "store_memory", {
+        "project": "test",
+        "content": "Expand JSON test",
+        "tags": ["test"],
+    })
+    mem_id = store_result.split("Stored memory ")[-1].strip()
+
+    result = await _call(mcp, "expand_memories", {
+        "project": "test",
+        "memory_ids": [mem_id],
+        "output": "json",
+    })
+
+    data = json.loads(result)
+    assert "results" in data
+    assert len(data["results"]) == 1
+    assert data["results"][0]["id"] == mem_id
+    assert data["results"][0]["content"] == "Expand JSON test"
+    assert "score" not in data["results"][0]

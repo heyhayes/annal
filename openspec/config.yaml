@@ -1,0 +1,16 @@
+schema: spec-driven
+
+context: |
+  Tech stack: Python 3.12, FastMCP, ChromaDB, watchdog, HTMX/Jinja2
+  Semantic memory MCP server for AI agent teams
+  See CLAUDE.md for conventions
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always include a "Non-goals" section
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
