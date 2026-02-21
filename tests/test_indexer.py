@@ -56,6 +56,34 @@ def test_index_file_stores_chunks(tmp_data_dir, tmp_path):
     assert results[0]["chunk_type"] == "file-indexed"
 
 
+def test_chunk_markdown_recognizes_h4_through_h6():
+    """Headings #### through ###### should create chunk boundaries."""
+    content = """# Top Level
+Intro text
+
+## Section
+Section text
+
+### Subsection
+Sub text
+
+#### Detail
+Detail text
+
+##### Fine Detail
+Fine detail text
+
+###### Finest Detail
+Finest detail text
+"""
+    chunks = chunk_markdown(content, "test.md")
+    headings = [c["heading"] for c in chunks]
+    # All heading levels should create separate chunks
+    assert any("Detail" in h for h in headings)
+    assert any("Fine Detail" in h for h in headings)
+    assert any("Finest Detail" in h for h in headings)
+
+
 def test_reindex_file_replaces_old_chunks(tmp_data_dir, tmp_path):
     md_file = tmp_path / "test.md"
     md_file.write_text("# Version 1\nOld content\n")

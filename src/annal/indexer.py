@@ -20,7 +20,7 @@ def chunk_markdown(content: str, filename: str) -> list[dict]:
     last_heading_text = ""
 
     for line in lines:
-        heading_match = re.match(r"^(#{1,3})\s+(.+)$", line)
+        heading_match = re.match(r"^(#{1,6})\s+(.+)$", line)
         if heading_match:
             # Save previous chunk
             text = "\n".join(current_content).strip()
