@@ -100,6 +100,114 @@ def test_annal_executable_returns_list():
     assert len(result) >= 1
 
 
+def test_install_adds_agent_instructions_to_claude_md(fake_home):
+    (fake_home / ".claude").mkdir(exist_ok=True)
+    (fake_home / ".claude" / "CLAUDE.md").write_text("# My instructions\n")
+    with patch("annal.cli.Path.home", return_value=fake_home):
+        result = install(start_service=False)
+
+    assert "Added agent instructions" in result
+    content = (fake_home / ".claude" / "CLAUDE.md").read_text()
+    assert "<annal_semantic_memory>" in content
+    assert "# My instructions" in content  # original content preserved
+
+
+def test_install_creates_claude_md_if_missing(fake_home):
+    # Remove the .claude dir created by fixture
+    import shutil
+    shutil.rmtree(fake_home / ".claude", ignore_errors=True)
+    with patch("annal.cli.Path.home", return_value=fake_home):
+        result = install(start_service=False)
+
+    assert "Created ~/.claude/CLAUDE.md" in result
+    content = (fake_home / ".claude" / "CLAUDE.md").read_text()
+    assert "<annal_semantic_memory>" in content
+
+
+def test_install_skips_agent_instructions_if_present(fake_home):
+    (fake_home / ".claude").mkdir(exist_ok=True)
+    (fake_home / ".claude" / "CLAUDE.md").write_text(
+        "<annal_semantic_memory>\nexisting\n</annal_semantic_memory>\n"
+    )
+    with patch("annal.cli.Path.home", return_value=fake_home):
+        result = install(start_service=False)
+
+    assert "already in CLAUDE.md" in result
+
+
+def test_uninstall_removes_agent_instructions(fake_home):
+    (fake_home / ".claude").mkdir(exist_ok=True)
+    (fake_home / ".claude" / "CLAUDE.md").write_text(
+        "<annal_semantic_memory>\nstuff\n</annal_semantic_memory>\n\n# Keep this\n"
+    )
+    with patch("annal.cli.Path.home", return_value=fake_home):
+        uninstall(stop_service=False)
+
+    content = (fake_home / ".claude" / "CLAUDE.md").read_text()
+    assert "<annal_semantic_memory>" not in content
+    assert "# Keep this" in content
+
+
+def test_install_creates_commit_hook(fake_home):
+    with patch("annal.cli.Path.home", return_value=fake_home):
+        result = install(start_service=False)
+
+    assert "post-commit reminder hook" in result
+    hook = fake_home / ".claude" / "hooks" / "annal-commit-reminder.sh"
+    assert hook.exists()
+    assert "git commit" in hook.read_text()
+
+    settings = json.loads((fake_home / ".claude" / "settings.json").read_text())
+    post_hooks = settings["hooks"]["PostToolUse"]
+    assert any("annal-commit-reminder" in json.dumps(e) for e in post_hooks)
+
+
+def test_install_commit_hook_idempotent(fake_home):
+    with patch("annal.cli.Path.home", return_value=fake_home):
+        install(start_service=False)
+        install(start_service=False)
+
+    settings = json.loads((fake_home / ".claude" / "settings.json").read_text())
+    post_hooks = settings["hooks"]["PostToolUse"]
+    annal_hooks = [e for e in post_hooks if "annal-commit-reminder" in json.dumps(e)]
+    assert len(annal_hooks) == 1
+
+
+def test_install_preserves_existing_settings(fake_home):
+    """Install should not clobber existing hooks in settings.json."""
+    (fake_home / ".claude").mkdir(exist_ok=True)
+    existing = {
+        "hooks": {
+            "SessionStart": [{"hooks": [{"type": "command", "command": "echo hi"}]}]
+        },
+        "permissions": {"allow": ["Bash(*)"]}
+    }
+    (fake_home / ".claude" / "settings.json").write_text(json.dumps(existing))
+
+    with patch("annal.cli.Path.home", return_value=fake_home):
+        install(start_service=False)
+
+    settings = json.loads((fake_home / ".claude" / "settings.json").read_text())
+    assert "SessionStart" in settings["hooks"]
+    assert "PostToolUse" in settings["hooks"]
+    assert settings["permissions"]["allow"] == ["Bash(*)"]
+
+
+def test_uninstall_removes_commit_hook(fake_home):
+    with patch("annal.cli.Path.home", return_value=fake_home):
+        install(start_service=False)
+        uninstall(stop_service=False)
+
+    hook = fake_home / ".claude" / "hooks" / "annal-commit-reminder.sh"
+    assert not hook.exists()
+
+    settings_path = fake_home / ".claude" / "settings.json"
+    if settings_path.exists():
+        settings = json.loads(settings_path.read_text())
+        post_hooks = settings.get("hooks", {}).get("PostToolUse", [])
+        assert not any("annal-commit-reminder" in json.dumps(e) for e in post_hooks)
+
+
 def test_uninstall_removes_mcp_json_entry(fake_home):
     # First install
     with patch("annal.cli.Path.home", return_value=fake_home):

@@ -78,6 +78,69 @@ For HTTP daemon mode (recommended when running multiple concurrent sessions):
 
 `annal install` writes the appropriate config files automatically. See `annal install` output for paths.
 
+## Agent configuration
+
+For agents to actually use Annal, they need instructions that explain why it matters, not just how to call it. Add one of these snippets to your `CLAUDE.md`, `AGENT.md`, or equivalent agent instructions file.
+
+### Recommended snippet
+
+```xml
+<annal_semantic_memory>
+You have persistent semantic memory via Annal (mcp__annal__* tools). Memories survive across
+sessions and are searchable by meaning. This is your long-term memory — MEMORY.md is a cheat
+sheet, Annal is deep storage.
+
+Why this matters: every session starts blank. Without Annal, you repeat investigations,
+rediscover patterns, and miss prior decisions. With it, you inherit your past self's
+understanding of the codebase.
+
+When to search (use mode="probe" to scan, then expand_memories for details):
+- Session start: load context for the current task area
+- Unfamiliar code: before diving into a module you haven't seen this session
+- "What happened" questions: anything about recent work, prior decisions, project state
+- Before architectural changes: check for prior decisions in the same domain
+- Familiar-feeling bugs: search for prior root causes
+
+When to store (tag with type + domain, e.g. tags=["decision", "auth"]):
+- Bug root causes and the fix that worked
+- Architectural decisions and their rationale
+- Codebase patterns that took effort to discover
+- User preferences for workflow, tools, style
+- Key file paths and module responsibilities in unfamiliar codebases
+
+After completing a task, before moving on, always ask: what did I learn that I'd want to know
+next time? If you discovered a root cause, mapped unfamiliar architecture, or found a pattern
+that took effort — store it. This is the single most important habit for cross-session value.
+
+Project name: use the basename of the current working directory.
+</annal_semantic_memory>
+```
+
+### Minimal snippet
+
+If you prefer something shorter:
+
+```xml
+<annal_semantic_memory>
+You have persistent semantic memory via Annal (mcp__annal__* tools). Unlike MEMORY.md which
+resets with context, Annal memories survive across sessions and are searchable by meaning.
+
+This matters because you lose all context when a session ends. Annal is how you recover it.
+Search before starting work — your past self may have already mapped the architecture,
+debugged this module, or recorded a decision that saves you from repeating the investigation.
+
+Search: at session start, when touching unfamiliar code, when the user asks "what did we
+decide about X", and before proposing architectural changes. Use mode="probe" to scan cheaply.
+
+Store: bug root causes, architectural decisions, codebase patterns, surprising discoveries —
+anything you'd want to know if you started a fresh session tomorrow. Tag with a type
+(decision, bug, pattern, memory) plus domain tags. After completing a task, always ask: what
+did I learn? Store it before moving on.
+
+Project name: use the basename of the current working directory.
+</annal_semantic_memory>
+```
+
 ## Project setup
 
 On first use, call `init_project` with watch paths for file indexing, or just start storing memories — unknown projects are auto-registered in the config.

@@ -60,6 +60,21 @@ Compiled from the initial spike. Items marked with [field] are things to validat
 - `config.save()` under `_lock` — YAML serialization + file I/O while holding the pool lock. Could block other threads if filesystem is slow. Move save outside the lock. P3.
 - `browse()` loads entire collection — every page request fetches all chunks into memory, then slices. Known limitation (noted as non-goal in spike 4 design) but problematic for kubernetes-scale projects on the dashboard. P2.
 
+## From spike 5 code review
+
+- `before` date filter loses last day with date-only strings — `"2026-02-28T..." > "2026-02-28"` lexicographically, so date-only `before` values exclude the entire last day. Fix: normalize date-only inputs (append `T23:59:59` to `before`, `T00:00:00` to `after`). P1.
+- Dual `AnnalConfig` — `main()` creates one config, `create_server()` loads another from same path. `init_project` mutates the closure config but the dashboard's reference never sees new projects. Not a crash, but a drift source. P2.
+- `_startup_reconcile` skips index lock — calls synchronous `reconcile_project()` without acquiring the per-project index lock. If `init_project`/`index_files` is called during startup, two reconciliations can race on the same project. P2.
+
+## From spike 5 test coverage review
+
+- No invalid-input tests for temporal date formats — `after="yesterday"` silently does a string comparison with nonsensical results. P2.
+- Empty-results JSON path untested — `search_memories` with `output="json"` on no results returns a specific `empty_json` structure but has no test. P2.
+- Tags + temporal filters untested in combination — both are post-query filters in the same loop, composition never verified. P3.
+- Over-fetch strategy untested at scale — tests store 1-2 memories; the `limit * 3` over-fetch for filtered queries is never exercised meaningfully. P3.
+- Heading context test too loose — checks `startswith("doc.md")` not the full heading path format. P3.
+- No concurrent test for `_get_index_lock` — identity tests are single-threaded, the race guard is unexercised. P3.
+
 ## Parked
 
 - ~~`annal --install-service` CLI command~~ — shipped as `annal install` in spike 3
@@ -69,6 +84,7 @@ Compiled from the initial spike. Items marked with [field] are things to validat
 - Live updates via SSE — dashboard is static right now, no feedback when memories are being stored/deleted/indexed in the background. Use HTMX's `hx-ext="sse"` to push events from the server when the store changes, so the table and counts update in real time. Gives visibility into whether indexing is running and what agents are learning as it happens.
 - Activity indicator — show when file reconciliation or indexing is in progress (spinner, progress bar, or log stream).
 - [field] Performance with large result sets — browse loads all matching items into memory for client-side pagination. May need server-side cursor pagination for projects with thousands of chunks.
+- Cursor-based pagination — replace offset/limit with opaque cursor tokens for stable pagination that doesn't skip or duplicate items on mutation. ChromaDB doesn't support cursors natively, so this would need a custom layer using `created_at` or document ID as sort key with `where` filtering. Not needed in alpha (offset/limit is fine for now), but worth building if dashboard performance degrades with large collections or if the API is ever exposed externally.
 
 ## From battle testing (Codex, 2026-02-20)
 
@@ -78,6 +94,8 @@ Compiled from the initial spike. Items marked with [field] are things to validat
 
 ## Retrieval quality
 
+- Fuzzy tag matching — tag filtering currently requires exact string matches, which means `auth` won't find memories tagged `authentication`. Use embedding similarity on tag strings at query time to expand filters to semantically equivalent tags (e.g. embed `"auth"`, compare against all known tags from `list_topics`, include anything above a similarity threshold). Local ONNX embeddings make the extra call negligible. Addresses the fundamental problem that LLMs will never converge on one exact tag string. P2.
+- Type tag validation on store — the type tags (`memory`, `decision`, `pattern`, `bug`, `spec`, `preference`) are a fixed vocabulary. Soft-reject unknown type tags at store time with a suggestion ("did you mean `decision`?") to prevent drift. Domain tags remain free-form. P3.
 - Hybrid search — combine vector similarity with full-text search (BM25 or similar) for better recall. Vector search misses exact keyword matches; full-text misses semantic similarity. Fusing both (reciprocal rank fusion or similar) would improve retrieval without adding infrastructure.
 - [field] Tune the dedup threshold — currently 0.95 cosine similarity. Might be too aggressive (rejecting distinct memories) or too loose (allowing near-duplicates). Needs real-world data to calibrate.
 - [field] Evaluate retrieval quality — are agents finding what they need? Track cases where relevant memories aren't surfacing and identify patterns.
