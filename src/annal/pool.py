@@ -36,18 +36,21 @@ class StorePool:
 
     def get_store(self, project: str) -> MemoryStore:
         """Get or create a MemoryStore for the given project."""
+        need_save = False
         with self._lock:
             if project not in self._stores:
                 logger.info("Creating store for project '%s'", project)
                 self._stores[project] = MemoryStore(
                     data_dir=self._config.data_dir, project=project
                 )
-                # Auto-register unknown projects in config so they're discoverable
                 if project not in self._config.projects:
                     self._config.add_project(project)
-                    self._config.save()
+                    need_save = True
                     logger.info("Auto-registered project '%s' in config", project)
-            return self._stores[project]
+            store = self._stores[project]
+        if need_save:
+            self._config.save()
+        return store
 
     def reconcile_project(self, project: str) -> int:
         """Reconcile file indexes for a project. Returns number of files indexed."""
