@@ -6,6 +6,7 @@ import atexit
 import logging
 import sys
 import threading
+from datetime import datetime, timezone
 
 from mcp.server.fastmcp import FastMCP
 
@@ -224,19 +225,21 @@ def create_server(
                 snippet = first_line[:150]
                 if len(first_line) > 150:
                     snippet += "…"
-                # Extract date portion from ISO created_at
-                date = r["created_at"][:10] if r["created_at"] else "unknown"
+                # Prefer updated_at date if present, otherwise created_at
+                date = (r.get("updated_at") or r["created_at"] or "")[:10] or "unknown"
                 source_label = r["source"] or "session observation"
                 lines.append(
                     f'[{r["score"]:.2f}] ({", ".join(r["tags"])}) "{snippet}"'
                     f"\n  Source: {source_label} | {date} | ID: {r['id']}"
                 )
             else:
-                lines.append(
-                    f"[{r['score']:.2f}] ({', '.join(r['tags'])}) {r['content']}"
-                    + (f"\n  Source: {r['source']}" if r["source"] else "")
-                    + f"\n  ID: {r['id']}"
-                )
+                entry = f"[{r['score']:.2f}] ({', '.join(r['tags'])}) {r['content']}"
+                if r["source"]:
+                    entry += f"\n  Source: {r['source']}"
+                if r.get("updated_at"):
+                    entry += f"\n  Updated: {r['updated_at']}"
+                entry += f"\n  ID: {r['id']}"
+                lines.append(entry)
         return f"[{project}] {len(results)} results:\n\n" + "\n\n".join(lines)
 
     @mcp.tool()
@@ -256,11 +259,13 @@ def create_server(
 
         lines = []
         for r in results:
-            lines.append(
-                f"({', '.join(r['tags'])}) {r['content']}"
-                + (f"\n  Source: {r['source']}" if r["source"] else "")
-                + f"\n  ID: {r['id']}"
-            )
+            entry = f"({', '.join(r['tags'])}) {r['content']}"
+            if r["source"]:
+                entry += f"\n  Source: {r['source']}"
+            if r.get("updated_at"):
+                entry += f"\n  Updated: {r['updated_at']}"
+            entry += f"\n  ID: {r['id']}"
+            lines.append(entry)
         return f"[{project}] {len(results)} memories:\n\n" + "\n\n".join(lines)
 
     @mcp.tool()
@@ -416,7 +421,13 @@ def create_server(
 
         lines = [f"[{project}] Status:"]
         if indexing:
-            lines.append("  Indexing: IN PROGRESS")
+            started = pool.get_index_started(project)
+            if started:
+                elapsed = datetime.now(timezone.utc) - started
+                mins, secs = divmod(int(elapsed.total_seconds()), 60)
+                lines.append(f"  Indexing: IN PROGRESS (running for {mins}m {secs}s)")
+            else:
+                lines.append("  Indexing: IN PROGRESS")
         else:
             lines.append("  Indexing: idle")
         lines.append(f"  Total chunks: {total}")

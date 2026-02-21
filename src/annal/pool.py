@@ -24,6 +24,7 @@ class StorePool:
         self._watchers: dict[str, FileWatcher] = {}
         self._lock = threading.Lock()
         self._index_locks: dict[str, threading.Lock] = defaultdict(threading.Lock)
+        self._index_started: dict[str, datetime] = {}
         self._last_reconcile: dict[str, dict] = {}
 
     def get_store(self, project: str) -> MemoryStore:
@@ -70,6 +71,7 @@ class StorePool:
                 logger.info("Indexing already in progress for '%s', waiting", project)
                 lock.acquire()
             try:
+                self._index_started[project] = datetime.now(timezone.utc)
                 if project not in self._config.projects:
                     return
                 store = self.get_store(project)
@@ -86,6 +88,7 @@ class StorePool:
                 if on_complete:
                     on_complete(count)
             finally:
+                self._index_started.pop(project, None)
                 lock.release()
 
         thread = threading.Thread(target=_run, daemon=True)
@@ -103,6 +106,10 @@ class StorePool:
     def get_last_reconcile(self, project: str) -> dict | None:
         """Get the last reconcile info for a project."""
         return self._last_reconcile.get(project)
+
+    def get_index_started(self, project: str) -> datetime | None:
+        """Get the start time of the current indexing run, or None if idle."""
+        return self._index_started.get(project)
 
     def start_watcher(self, project: str) -> None:
         """Start a file watcher for the given project (skipped if watch=false)."""
