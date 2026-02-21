@@ -368,3 +368,16 @@ async def test_index_files_returns_immediately(server_env):
 
     result = await _call(mcp, "index_files", {"project": "asyncidx"})
     assert "asyncidx" in result.lower() or "index" in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_index_status(mcp):
+    """index_status should return project diagnostics."""
+    await _call(mcp, "store_memory", {
+        "project": "statustest",
+        "content": "Some memory",
+        "tags": ["test"],
+    })
+    result = await _call(mcp, "index_status", {"project": "statustest"})
+    assert "statustest" in result
+    assert "chunks" in result.lower() or "total" in result.lower()

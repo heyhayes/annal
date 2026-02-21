@@ -399,6 +399,33 @@ def create_server(
         )
         return f"[{project}] Re-indexing started in background. Use index_status to check progress."
 
+    @mcp.tool()
+    def index_status(project: str) -> str:
+        """Check indexing status and collection diagnostics for a project.
+
+        Args:
+            project: Project name to check
+        """
+        store = pool.get_store(project)
+        total = store.count()
+        stats = store.stats()
+        indexing = pool.is_indexing(project)
+        last = pool.get_last_reconcile(project)
+
+        lines = [f"[{project}] Status:"]
+        if indexing:
+            lines.append("  Indexing: IN PROGRESS")
+        else:
+            lines.append("  Indexing: idle")
+        lines.append(f"  Total chunks: {total}")
+        lines.append(f"  File-indexed: {stats['by_type'].get('file-indexed', 0)}")
+        lines.append(f"  Agent memories: {stats['by_type'].get('agent-memory', 0)}")
+        if last:
+            lines.append(f"  Last reconcile: {last['timestamp']} ({last['file_count']} files)")
+        else:
+            lines.append("  Last reconcile: never")
+        return "\n".join(lines)
+
     return mcp
 
 
