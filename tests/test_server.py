@@ -690,3 +690,27 @@ async def test_min_score_skipped_when_tags_provided(mcp):
         "tags": ["auth"],
     })
     assert "JWT token rotation" in result
+
+
+@pytest.mark.asyncio
+async def test_cross_project_always_includes_primary(mcp):
+    """projects=["other"] should also search the primary project."""
+    import json
+
+    await _call(mcp, "store_memory", {
+        "project": "primary", "content": "Primary project memory", "tags": ["test"]
+    })
+    await _call(mcp, "store_memory", {
+        "project": "other", "content": "Other project memory", "tags": ["test"]
+    })
+
+    result = await _call(mcp, "search_memories", {
+        "project": "primary",
+        "query": "project memory",
+        "projects": ["other"],
+        "output": "json",
+    })
+    data = json.loads(result)
+    projects_found = {r["project"] for r in data["results"]}
+    assert "primary" in projects_found
+    assert "other" in projects_found

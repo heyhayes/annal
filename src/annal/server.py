@@ -260,6 +260,8 @@ def create_server(
                 search_projects.append(project)
         elif projects:
             search_projects = list(projects) if isinstance(projects, list) else [projects]
+            if project not in search_projects:
+                search_projects.insert(0, project)
         else:
             search_projects = [project]
 
