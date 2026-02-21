@@ -11,7 +11,7 @@ import chromadb
 import numpy as np
 from chromadb.utils.embedding_functions import ONNXMiniLM_L6_V2
 
-FUZZY_TAG_THRESHOLD = 0.75
+FUZZY_TAG_THRESHOLD = 0.72
 
 _ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2})?")
 

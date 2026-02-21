@@ -414,3 +414,14 @@ def test_search_across_projects(tmp_data_dir):
     results_b = store_b.search("auth", limit=5)
     assert len(results_a) == 1
     assert len(results_b) == 1
+
+
+def test_fuzzy_tag_matches_dbs_to_database(tmp_data_dir):
+    """Lowered threshold (0.72) should match 'dbs' to 'database'."""
+    store = MemoryStore(data_dir=tmp_data_dir, project="fuzzy_threshold")
+    store.store(content="PostgreSQL is our primary database", tags=["database"])
+    store.store(content="Frontend uses React", tags=["frontend"])
+
+    results = store.search("primary", tags=["dbs"], limit=5)
+    assert len(results) == 1
+    assert "PostgreSQL" in results[0]["content"]
