@@ -147,11 +147,15 @@ def create_server(
     # server can start accepting connections immediately
     def _startup_reconcile() -> None:
         for project_name in config.projects:
-            logger.info("Reconciling project '%s'...", project_name)
-            event_bus.push(Event(type="index_started", project=project_name))
-            count = pool.reconcile_project(project_name)
-            event_bus.push(Event(type="index_complete", project=project_name, detail=f"{count} files"))
-            pool.start_watcher(project_name)
+            try:
+                logger.info("Reconciling project '%s'...", project_name)
+                event_bus.push(Event(type="index_started", project=project_name))
+                count = pool.reconcile_project(project_name)
+                event_bus.push(Event(type="index_complete", project=project_name, detail=f"{count} files"))
+                pool.start_watcher(project_name)
+            except Exception:
+                logger.exception("Startup reconciliation failed for project '%s'", project_name)
+                event_bus.push(Event(type="index_failed", project=project_name, detail="startup reconciliation failed"))
         logger.info("Startup reconciliation complete")
 
     threading.Thread(target=_startup_reconcile, daemon=True).start()

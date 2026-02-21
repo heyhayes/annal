@@ -9,6 +9,7 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 
 from annal.config import AnnalConfig
+from annal.events import event_bus, Event
 from annal.store import MemoryStore
 from annal.watcher import FileWatcher
 
@@ -87,6 +88,11 @@ class StorePool:
                 logger.info("Reconciled %d files for project '%s'", count, project)
                 if on_complete:
                     on_complete(count)
+            except Exception as exc:
+                logger.exception("Reconciliation failed for project '%s'", project)
+                event_bus.push(Event(
+                    type="index_failed", project=project, detail=str(exc)
+                ))
             finally:
                 self._index_started.pop(project, None)
                 lock.release()
