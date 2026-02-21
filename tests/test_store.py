@@ -302,3 +302,56 @@ def test_search_rejects_invalid_date_format(tmp_data_dir):
 
     results = store.search("memory", before="not-a-date")
     assert len(results) == 0
+
+
+def test_search_json_empty_results(tmp_data_dir):
+    """search with no results returns empty list."""
+    store = MemoryStore(data_dir=tmp_data_dir, project="json_empty")
+    # Don't store anything — collection is empty
+    results = store.search("anything", limit=5)
+    assert results == []
+
+
+def test_search_combined_tags_and_temporal(tmp_data_dir):
+    """Tags and temporal filters should compose correctly."""
+    from unittest.mock import patch
+    from datetime import datetime, timezone
+
+    store = MemoryStore(data_dir=tmp_data_dir, project="combined")
+
+    # Store memories with different tags and simulated timestamps
+    with patch("annal.store.datetime") as mock_dt:
+        mock_dt.now.return_value = datetime(2026, 1, 15, tzinfo=timezone.utc)
+        mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
+        store.store(content="Old billing decision", tags=["billing", "decision"])
+
+    with patch("annal.store.datetime") as mock_dt:
+        mock_dt.now.return_value = datetime(2026, 2, 15, tzinfo=timezone.utc)
+        mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
+        store.store(content="New billing decision", tags=["billing", "decision"])
+
+    with patch("annal.store.datetime") as mock_dt:
+        mock_dt.now.return_value = datetime(2026, 2, 15, tzinfo=timezone.utc)
+        mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
+        store.store(content="New auth pattern", tags=["auth", "pattern"])
+
+    # Tags=billing AND after=Feb 1 should return only the new billing decision
+    results = store.search("decision", tags=["billing"], after="2026-02-01")
+    assert len(results) == 1
+    assert "New billing" in results[0]["content"]
+
+
+def test_search_overfetch_with_tag_filter(tmp_data_dir):
+    """With many memories, tag filtering should still return correct results."""
+    store = MemoryStore(data_dir=tmp_data_dir, project="overfetch")
+
+    # Store 15 memories with "noise" tag and 3 with "signal" tag
+    # Total = 18, overfetch = max(5*3, 20) = 20, so all should be retrieved
+    for i in range(15):
+        store.store(content=f"Noise memory about topic {i}", tags=["noise"])
+    for i in range(3):
+        store.store(content=f"Signal memory about finding {i}", tags=["signal"])
+
+    results = store.search("memory", tags=["signal"], limit=5)
+    assert len(results) == 3
+    assert all("Signal" in r["content"] for r in results)

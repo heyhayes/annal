@@ -201,3 +201,23 @@ def test_get_index_lock_different_projects(tmp_data_dir, tmp_config_path):
     lock1 = pool._get_index_lock("project_a")
     lock2 = pool._get_index_lock("project_b")
     assert lock1 is not lock2
+
+
+def test_get_index_lock_concurrent_same_lock(tmp_data_dir, tmp_config_path):
+    """Two threads calling _get_index_lock for the same project get the same lock."""
+    config = AnnalConfig(config_path=tmp_config_path, data_dir=tmp_data_dir)
+    config.save()
+    pool = StorePool(config)
+
+    locks = []
+    def get_lock():
+        locks.append(pool._get_index_lock("concurrent_test"))
+
+    threads = [threading.Thread(target=get_lock) for _ in range(10)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert len(locks) == 10
+    assert len(set(id(l) for l in locks)) == 1

@@ -117,3 +117,18 @@ def test_reindex_file_replaces_old_chunks(tmp_data_dir, tmp_path):
     # Old content should not match well anymore since it was deleted
     for r in results:
         assert "Old content" not in r["content"]
+
+
+def test_heading_context_uses_full_path(tmp_data_dir, tmp_path):
+    """Stored content should start with 'filename > Heading > Subheading' format."""
+    md_file = tmp_path / "doc.md"
+    md_file.write_text("# Project\nIntro\n\n## Design\n### Backend\nUses Python.\n")
+
+    store = MemoryStore(data_dir=tmp_data_dir, project="heading_strict")
+    index_file(store, str(md_file))
+
+    results = store.search("Python", limit=5)
+    backend_chunk = [r for r in results if "Backend" in r["source"]]
+    assert len(backend_chunk) > 0
+    # Content should start with the full heading path
+    assert backend_chunk[0]["content"].startswith("doc.md > Design > Backend")
