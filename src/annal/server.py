@@ -200,6 +200,8 @@ def create_server(
         limit: int = 5,
         mode: str = "full",
         min_score: float = 0.0,
+        after: str | None = None,
+        before: str | None = None,
     ) -> str:
         """Search project memories using natural language.
 
@@ -211,10 +213,12 @@ def create_server(
             mode: "full" (default) returns complete content; "probe" returns compact
                   summaries — use probe to scan relevance, then expand_memories for details
             min_score: Minimum similarity score to include (default 0.0, suppresses negative scores)
+            after: Optional ISO 8601 date — only return memories created after this date
+            before: Optional ISO 8601 date — only return memories created before this date
         """
         tags = _normalize_tags(tags)
         store = pool.get_store(project)
-        results = store.search(query=query, tags=tags, limit=limit)
+        results = store.search(query=query, tags=tags, limit=limit, after=after, before=before)
         if not results:
             return f"[{project}] No matching memories found."
 

@@ -424,3 +424,34 @@ async def test_update_memory_no_op(mcp):
         "memory_id": "doesnt-matter",
     })
     assert "nothing to update" in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_search_with_temporal_filter(mcp):
+    """search_memories should accept after/before date params."""
+    await _call(mcp, "store_memory", {
+        "project": "test",
+        "content": "Decision made today about API design",
+        "tags": ["decision"],
+    })
+
+    from datetime import datetime, timezone, timedelta
+    tomorrow = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
+    yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+
+    # Should find with yesterday-tomorrow range
+    result = await _call(mcp, "search_memories", {
+        "project": "test",
+        "query": "API design",
+        "after": yesterday,
+        "before": tomorrow,
+    })
+    assert "API design" in result
+
+    # Should not find with future-only range
+    result = await _call(mcp, "search_memories", {
+        "project": "test",
+        "query": "API design",
+        "after": tomorrow,
+    })
+    assert "No matching memories" in result

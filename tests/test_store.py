@@ -200,3 +200,51 @@ def test_update_nonexistent_memory_raises(tmp_data_dir):
     store = MemoryStore(data_dir=tmp_data_dir, project="update_missing")
     with pytest.raises(ValueError, match="not found"):
         store.update("nonexistent-id", content="Should fail")
+
+
+def test_search_with_after_filter(tmp_data_dir):
+    from datetime import datetime, timezone, timedelta
+    store = MemoryStore(data_dir=tmp_data_dir, project="temporal")
+
+    store.store(content="Old decision about auth", tags=["decision"])
+    store.store(content="New decision about billing", tags=["decision"])
+
+    # After tomorrow — should find nothing
+    tomorrow = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
+    results = store.search("decision", after=tomorrow)
+    assert len(results) == 0
+
+    # After yesterday — should find both
+    yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    results = store.search("decision", after=yesterday)
+    assert len(results) == 2
+
+
+def test_search_with_before_filter(tmp_data_dir):
+    from datetime import datetime, timezone, timedelta
+    store = MemoryStore(data_dir=tmp_data_dir, project="temporal2")
+
+    store.store(content="Some memory", tags=["test"])
+
+    # Before yesterday — should find nothing
+    yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    results = store.search("memory", before=yesterday)
+    assert len(results) == 0
+
+    # Before tomorrow — should find it
+    tomorrow = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
+    results = store.search("memory", before=tomorrow)
+    assert len(results) == 1
+
+
+def test_search_with_after_and_before(tmp_data_dir):
+    from datetime import datetime, timezone, timedelta
+    store = MemoryStore(data_dir=tmp_data_dir, project="temporal3")
+
+    store.store(content="Memory in range", tags=["test"])
+
+    yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    tomorrow = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
+
+    results = store.search("Memory", after=yesterday, before=tomorrow)
+    assert len(results) == 1
