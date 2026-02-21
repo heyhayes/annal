@@ -634,6 +634,13 @@ def main() -> None:
     # uninstall subcommand
     subparsers.add_parser("uninstall", help="Remove Annal service and MCP client configs")
 
+    # migrate subcommand
+    migrate_parser = subparsers.add_parser("migrate", help="Migrate data between backends")
+    migrate_parser.add_argument("--from", dest="from_backend", required=True, help="Source backend (chromadb or qdrant)")
+    migrate_parser.add_argument("--to", dest="to_backend", required=True, help="Destination backend (chromadb or qdrant)")
+    migrate_parser.add_argument("--project", required=True, help="Project to migrate")
+    migrate_parser.add_argument("--config", default=DEFAULT_CONFIG_PATH, help="Path to config file")
+
     args = parser.parse_args()
 
     if args.command == "install":
@@ -644,6 +651,33 @@ def main() -> None:
     if args.command == "uninstall":
         from annal.cli import uninstall
         print(uninstall())
+        return
+
+    if args.command == "migrate":
+        from annal.backend import OnnxEmbedder
+        from annal.migrate import migrate
+
+        config = AnnalConfig.load(args.config)
+        embedder = OnnxEmbedder()
+        dimension = embedder.dimension
+        collection = f"annal_{args.project}"
+
+        def _make_backend(name: str) -> "VectorBackend":
+            backend_config = config.storage.backends.get(name, {})
+            if name == "chromadb":
+                from annal.backends.chromadb import ChromaBackend
+                path = backend_config.get("path", config.data_dir)
+                return ChromaBackend(path=path, collection_name=collection, dimension=dimension)
+            if name == "qdrant":
+                from annal.backends.qdrant import QdrantBackend
+                url = backend_config.get("url", "http://localhost:6333")
+                return QdrantBackend(url=url, collection_name=collection, dimension=dimension)
+            raise ValueError(f"Unknown backend: {name}")
+
+        src = _make_backend(args.from_backend)
+        dst = _make_backend(args.to_backend)
+        count = migrate(src, dst, embedder)
+        print(f"Migrated {count} documents from {args.from_backend} to {args.to_backend}")
         return
 
     # Default: serve (handles both `annal serve` and bare `annal` with old flags)
