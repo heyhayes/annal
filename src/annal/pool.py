@@ -8,7 +8,6 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 
 from annal.backend import Embedder, OnnxEmbedder, VectorBackend
-from annal.backends.chromadb import ChromaBackend
 from annal.config import AnnalConfig
 from annal.events import event_bus, Event
 from annal.store import MemoryStore
@@ -45,13 +44,24 @@ class StorePool:
         return self._embedder
 
     def _create_backend(self, project: str) -> VectorBackend:
-        """Create a vector backend for the given project."""
+        """Create a vector backend for the given project based on config."""
+        storage = self._config.storage
+        backend_name = storage.backend
+        backend_config = storage.backends.get(backend_name, {})
         collection_name = f"annal_{project}"
-        return ChromaBackend(
-            path=self._config.data_dir,
-            collection_name=collection_name,
-            dimension=self._get_embedder().dimension,
-        )
+        dimension = self._get_embedder().dimension
+
+        if backend_name == "chromadb":
+            from annal.backends.chromadb import ChromaBackend
+            path = backend_config.get("path", self._config.data_dir)
+            return ChromaBackend(path=path, collection_name=collection_name, dimension=dimension)
+
+        if backend_name == "qdrant":
+            from annal.backends.qdrant import QdrantBackend
+            url = backend_config.get("url", "http://localhost:6333")
+            return QdrantBackend(url=url, collection_name=collection_name, dimension=dimension)
+
+        raise ValueError(f"Unknown backend: {backend_name}")
 
     def get_store(self, project: str) -> MemoryStore:
         """Get or create a MemoryStore for the given project."""

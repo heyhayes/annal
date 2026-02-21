@@ -33,11 +33,18 @@ class ProjectConfig:
 
 
 @dataclass
+class StorageConfig:
+    backend: str = "chromadb"
+    backends: dict[str, dict] = field(default_factory=dict)
+
+
+@dataclass
 class AnnalConfig:
     config_path: str = DEFAULT_CONFIG_PATH
     data_dir: str = DEFAULT_DATA_DIR
     port: int = DEFAULT_PORT
     projects: dict[str, ProjectConfig] = field(default_factory=dict)
+    storage: StorageConfig = field(default_factory=StorageConfig)
 
     @classmethod
     def load(cls, config_path: str = DEFAULT_CONFIG_PATH) -> AnnalConfig:
@@ -57,18 +64,31 @@ class AnnalConfig:
                 watch=proj_data.get("watch", True),
             )
 
+        data_dir = os.path.expanduser(raw.get("data_dir", DEFAULT_DATA_DIR))
+
+        storage_raw = raw.get("storage", {})
+        storage = StorageConfig(
+            backend=storage_raw.get("backend", "chromadb"),
+            backends=storage_raw.get("backends", {"chromadb": {"path": data_dir}}),
+        )
+        # Expand ~ in backend paths
+        for bconf in storage.backends.values():
+            if "path" in bconf:
+                bconf["path"] = os.path.expanduser(bconf["path"])
+
         return cls(
             config_path=config_path,
-            data_dir=os.path.expanduser(raw.get("data_dir", DEFAULT_DATA_DIR)),
+            data_dir=data_dir,
             port=raw.get("port", DEFAULT_PORT),
             projects=projects,
+            storage=storage,
         )
 
     def save(self) -> None:
         path = Path(self.config_path)
         path.parent.mkdir(parents=True, exist_ok=True)
 
-        raw = {
+        raw: dict = {
             "data_dir": self.data_dir,
             "port": self.port,
             "projects": {
@@ -81,6 +101,11 @@ class AnnalConfig:
                 for name, proj in self.projects.items()
             },
         }
+        if self.storage.backend != "chromadb" or len(self.storage.backends) > 1:
+            raw["storage"] = {
+                "backend": self.storage.backend,
+                "backends": self.storage.backends,
+            }
         with open(path, "w") as f:
             yaml.dump(raw, f, default_flow_style=False)
 
