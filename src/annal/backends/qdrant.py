@@ -231,9 +231,7 @@ class QdrantBackend:
         next_offset = None
 
         while len(collected) < limit:
-            batch_size = min(limit - len(collected) + (offset - skipped if skipped < offset else 0), 100)
-            if batch_size <= 0:
-                batch_size = limit
+            batch_size = 100
 
             records, next_offset = self._client.scroll(
                 collection_name=self._collection,
@@ -349,6 +347,11 @@ class QdrantBackend:
             if "$lt" in conditions:
                 if not val < conditions["$lt"]:
                     return False
+            if "$not_exists" in conditions:
+                if conditions["$not_exists"]:
+                    raw = result.metadata.get(key)
+                    if raw is not None and raw != "":
+                        return False
         return True
 
     @staticmethod

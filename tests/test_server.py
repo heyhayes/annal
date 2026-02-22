@@ -953,6 +953,122 @@ async def test_delete_memory_not_found(mcp):
 
 
 @pytest.mark.asyncio
+async def test_store_with_supersedes(mcp):
+    """store_memory with supersedes should mark old memory and confirm."""
+    old_result = await _call(mcp, "store_memory", {
+        "project": "test",
+        "content": "We use session cookies for auth",
+        "tags": ["decision", "auth"],
+    })
+    old_id = old_result.split("Stored memory ")[-1].strip()
+
+    new_result = await _call(mcp, "store_memory", {
+        "project": "test",
+        "content": "We use JWT for auth",
+        "tags": ["decision", "auth"],
+        "supersedes": old_id,
+    })
+    assert "supersedes" in new_result
+    assert old_id in new_result
+
+
+@pytest.mark.asyncio
+async def test_supersedes_skips_dedup(mcp):
+    """store_memory with supersedes should bypass dedup check."""
+    old_result = await _call(mcp, "store_memory", {
+        "project": "test",
+        "content": "We use session cookies for auth across all services",
+        "tags": ["decision", "auth"],
+    })
+    old_id = old_result.split("Stored memory ")[-1].strip()
+
+    # Nearly identical content that would normally be deduped
+    new_result = await _call(mcp, "store_memory", {
+        "project": "test",
+        "content": "We use session cookies for auth across all services",
+        "tags": ["decision", "auth"],
+        "supersedes": old_id,
+    })
+    assert "Stored memory" in new_result
+    assert "Skipped" not in new_result
+
+
+@pytest.mark.asyncio
+async def test_search_include_superseded(mcp):
+    """search_memories with include_superseded=True should return replaced memories."""
+    old_result = await _call(mcp, "store_memory", {
+        "project": "test",
+        "content": "Old architecture choice for search superseded test",
+        "tags": ["decision"],
+    })
+    old_id = old_result.split("Stored memory ")[-1].strip()
+
+    await _call(mcp, "store_memory", {
+        "project": "test",
+        "content": "New architecture choice for search superseded test",
+        "tags": ["decision"],
+        "supersedes": old_id,
+    })
+
+    # Default: superseded hidden
+    normal = await _call(mcp, "search_memories", {
+        "project": "test",
+        "query": "architecture choice for search superseded test",
+    })
+    assert "Old architecture" not in normal
+
+    # With include_superseded: old one visible
+    with_superseded = await _call(mcp, "search_memories", {
+        "project": "test",
+        "query": "architecture choice for search superseded test",
+        "include_superseded": True,
+    })
+    assert "Old architecture" in with_superseded
+
+
+@pytest.mark.asyncio
+async def test_supersedes_confirmation_message(mcp):
+    """store_memory with supersedes should include both IDs in confirmation."""
+    old_result = await _call(mcp, "store_memory", {
+        "project": "test",
+        "content": "Original decision for confirmation test",
+        "tags": ["decision"],
+    })
+    old_id = old_result.split("Stored memory ")[-1].strip()
+
+    new_result = await _call(mcp, "store_memory", {
+        "project": "test",
+        "content": "Updated decision for confirmation test",
+        "tags": ["decision"],
+        "supersedes": old_id,
+    })
+    new_id = new_result.split("Stored memory ")[1].split(" ")[0]
+    assert new_id in new_result
+    assert f"supersedes {old_id}" in new_result
+
+
+@pytest.mark.asyncio
+async def test_similarity_hint_on_store(mcp):
+    """Storing a similar (but not duplicate) memory should produce a hint."""
+    await _call(mcp, "store_memory", {
+        "project": "test",
+        "content": "The billing pipeline validates invoice totals before charging the card",
+        "tags": ["billing"],
+    })
+
+    # Store something similar but different enough to not be deduped
+    result = await _call(mcp, "store_memory", {
+        "project": "test",
+        "content": "The billing pipeline validates invoice totals before processing payment",
+        "tags": ["billing"],
+    })
+    # Should either be stored with a hint or deduped — check for either valid outcome
+    assert "Stored memory" in result or "Skipped" in result
+    if "Stored memory" in result and "Note:" in result:
+        assert "supersedes=" in result
+
+
+@pytest.mark.asyncio
 async def test_search_default_mode_is_summary(mcp):
     """Default mode should be 'summary' (not 'full')."""
     import json

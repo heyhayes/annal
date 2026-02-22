@@ -61,7 +61,7 @@ class ChromaBackend:
 
         results = self._collection.query(
             query_embeddings=[embedding],
-            n_results=min(n, total) or 1,
+            n_results=min(n, total),
             where=chroma_where or None,
         )
 
@@ -243,5 +243,10 @@ class ChromaBackend:
             if "$lt" in condition:
                 if not isinstance(value, str) or value >= condition["$lt"]:
                     return False
+
+            if "$not_exists" in condition:
+                if condition["$not_exists"]:
+                    if value is not None and value != "":
+                        return False
 
         return True
