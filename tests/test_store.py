@@ -568,6 +568,54 @@ def test_store_supersedes_marks_old_memory(tmp_data_dir):
     assert results[0]["superseded_by"] == new_id
 
 
+def test_list_topics_excludes_superseded_by_default(tmp_data_dir):
+    """list_topics should not count tags from superseded memories."""
+    store = make_store(tmp_data_dir, "topics_supersede")
+    old_id = store.store(content="Session cookies for auth", tags=["auth", "decision"])
+    store.store(content="JWT for auth", tags=["auth", "decision"], supersedes=old_id)
+    store.store(content="React frontend", tags=["frontend"])
+
+    topics = store.list_topics()
+    assert topics["auth"] == 1
+    assert topics["decision"] == 1
+    assert topics["frontend"] == 1
+
+
+def test_list_topics_includes_superseded_when_requested(tmp_data_dir):
+    """list_topics(include_superseded=True) should count all tags."""
+    store = make_store(tmp_data_dir, "topics_supersede_inc")
+    old_id = store.store(content="Session cookies for auth", tags=["auth", "decision"])
+    store.store(content="JWT for auth", tags=["auth", "decision"], supersedes=old_id)
+
+    topics = store.list_topics(include_superseded=True)
+    assert topics["auth"] == 2
+    assert topics["decision"] == 2
+
+
+def test_stats_excludes_superseded_by_default(tmp_data_dir):
+    """stats should not count superseded memories."""
+    store = make_store(tmp_data_dir, "stats_supersede")
+    old_id = store.store(content="Old decision", tags=["decision"])
+    store.store(content="New decision", tags=["decision"], supersedes=old_id)
+
+    stats = store.stats()
+    assert stats["total"] == 1
+    assert stats["by_type"]["agent-memory"] == 1
+    assert stats["by_tag"]["decision"] == 1
+
+
+def test_stats_includes_superseded_when_requested(tmp_data_dir):
+    """stats(include_superseded=True) should count all memories."""
+    store = make_store(tmp_data_dir, "stats_supersede_inc")
+    old_id = store.store(content="Old decision", tags=["decision"])
+    store.store(content="New decision", tags=["decision"], supersedes=old_id)
+
+    stats = store.stats(include_superseded=True)
+    assert stats["total"] == 2
+    assert stats["by_type"]["agent-memory"] == 2
+    assert stats["by_tag"]["decision"] == 2
+
+
 def test_store_supersedes_nonexistent_id_does_not_error(tmp_data_dir):
     """store(supersedes=...) with a nonexistent ID should silently succeed."""
     store = make_store(tmp_data_dir, "supersede_missing")

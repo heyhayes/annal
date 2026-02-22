@@ -57,7 +57,9 @@ class ChromaBackend:
             return []
 
         chroma_where, post_filters = self._split_where(where)
-        n = limit * 3 if post_filters else limit
+        # Overfetch 3x when post-filters are active to compensate for
+        # filtered-out results, but cap at 500 to bound vector DB load.
+        n = min(limit * 3, 500) if post_filters else limit
 
         results = self._collection.query(
             query_embeddings=[embedding],

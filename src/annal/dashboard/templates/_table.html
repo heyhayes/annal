@@ -1,5 +1,5 @@
 {% for mem in memories %}
-<tr class="memory-row">
+<tr class="memory-row{% if mem.superseded_by %} superseded{% endif %}">
   <td class="col-check">
     <input type="checkbox" class="row-check" value="{{ mem.id }}" onchange="toggleBulkBtn()">
   </td>
@@ -24,6 +24,9 @@
   </td>
   <td class="col-type">
     <span class="type-badge type-{{ mem.chunk_type }}">{{ mem.chunk_type }}</span>
+    {% if mem.superseded_by %}
+    <span class="superseded-badge" title="Superseded by {{ mem.superseded_by }}">superseded</span>
+    {% endif %}
   </td>
   <td class="col-date">
     <span class="date-text">{{ mem.created_at[:10] if mem.created_at else "" }}</span>

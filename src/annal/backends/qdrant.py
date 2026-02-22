@@ -136,7 +136,9 @@ class QdrantBackend:
     ) -> list[VectorResult]:
         native, post = self._split_where(where) if where else (None, None)
         qfilter = self._build_filter(native) if native else None
-        fetch_limit = limit * 3 if post else limit
+        # Overfetch 3x when post-filters are active to compensate for
+        # filtered-out results, but cap at 500 to bound vector DB load.
+        fetch_limit = min(limit * 3, 500) if post else limit
 
         is_rrf = self._hybrid and query_text
         if is_rrf:

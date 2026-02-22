@@ -493,6 +493,18 @@ body {
   background: var(--bg-hover);
 }
 
+.memory-row.superseded { opacity: 0.55; }
+
+.superseded-badge {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+  margin-left: 0.4rem;
+}
+
 .col-check {
   width: 32px;
   text-align: center;

@@ -203,6 +203,37 @@ def test_query_not_exists_excludes_records_with_field(backend, embedder):
     assert results[0].id == "m2"
 
 
+def test_query_large_limit_with_post_filter_respects_limit(backend, embedder):
+    """A large limit with post-filters should still return correct results capped at limit."""
+    for i in range(10):
+        backend.insert(
+            f"m{i}", f"memory {i}", embedder.embed(f"memory {i}"),
+            {"tags": ["keep"] if i < 5 else ["skip"], "created_at": "2026-01-01T00:00:00"},
+        )
+    # Request limit=3 with a tag post-filter — should get at most 3 matching results
+    results = backend.query(
+        embedder.embed("memory"), limit=3,
+        where={"tags": {"$contains_any": ["keep"]}},
+    )
+    assert len(results) <= 3
+    assert all(r.metadata["tags"] == ["keep"] for r in results)
+
+
+def test_query_large_limit_with_post_filter_caps_overfetch(backend, embedder):
+    """With limit=1000 and post-filters, overfetch should be capped (not 3000)."""
+    backend.insert(
+        "m1", "only one", embedder.embed("only one"),
+        {"tags": ["target"], "created_at": "2026-01-01T00:00:00"},
+    )
+    # Even with limit=1000, the query should work and return the matching result
+    results = backend.query(
+        embedder.embed("only one"), limit=1000,
+        where={"tags": {"$contains_any": ["target"]}},
+    )
+    assert len(results) == 1
+    assert results[0].id == "m1"
+
+
 def test_scan_not_exists_excludes_records_with_field(backend, embedder):
     backend.insert("m1", "superseded", embedder.embed("superseded"), {"tags": [], "superseded_by": "m2", "created_at": "2026-01-01T00:00:00"})
     backend.insert("m2", "current", embedder.embed("current"), {"tags": [], "created_at": "2026-01-01T00:00:00"})

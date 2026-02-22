@@ -172,20 +172,9 @@ class MemoryStore:
         memories = []
         for r in results:
             distance = r.distance if r.distance is not None else 0.0
-            score = 1.0 - distance
-            mem: dict = {
-                "id": r.id,
-                "content": r.text,
-                "tags": r.metadata.get("tags", []),
-                "source": r.metadata.get("source", ""),
-                "chunk_type": r.metadata.get("chunk_type", ""),
-                "score": score,
-                "distance": distance,
-                "created_at": r.metadata.get("created_at", ""),
-                "updated_at": r.metadata.get("updated_at", ""),
-            }
-            if r.metadata.get("superseded_by"):
-                mem["superseded_by"] = r.metadata["superseded_by"]
+            mem = self._format_result(r)
+            mem["score"] = 1.0 - distance
+            mem["distance"] = distance
             memories.append(mem)
 
         return memories[:limit]
@@ -292,9 +281,11 @@ class MemoryStore:
             offset += len(results)
         return pairs
 
-    def list_topics(self) -> dict[str, int]:
+    def list_topics(self, include_superseded: bool = False) -> dict[str, int]:
         tag_counts: dict[str, int] = {}
         for _, meta in self._iter_metadata():
+            if not include_superseded and meta.get("superseded_by"):
+                continue
             for tag in meta.get("tags", []):
                 tag_counts[tag] = tag_counts.get(tag, 0) + 1
         return tag_counts
@@ -348,12 +339,14 @@ class MemoryStore:
         results, total = self._backend.scan(offset=offset, limit=limit, where=where)
         return [self._format_result(r) for r in results], total
 
-    def stats(self) -> dict:
+    def stats(self, include_superseded: bool = False) -> dict:
         """Return collection statistics: total count, type breakdown, tag distribution."""
         by_type: dict[str, int] = {}
         by_tag: dict[str, int] = {}
         total = 0
         for _, meta in self._iter_metadata():
+            if not include_superseded and meta.get("superseded_by"):
+                continue
             total += 1
             chunk_type = meta.get("chunk_type", "")
             by_type[chunk_type] = by_type.get(chunk_type, 0) + 1
