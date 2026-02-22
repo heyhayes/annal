@@ -6,8 +6,6 @@ import re
 import uuid
 from datetime import datetime, timezone
 
-import numpy as np
-
 from annal.backend import Embedder, VectorBackend, VectorResult
 
 FUZZY_TAG_THRESHOLD = 0.72
@@ -37,8 +35,9 @@ class MemoryStore:
         """Clear the tag embedding cache. Called after store/update/delete."""
         self._tag_cache = None
 
-    def _get_tag_embeddings(self) -> dict[str, np.ndarray]:
+    def _get_tag_embeddings(self) -> dict[str, "np.ndarray"]:
         """Get or build a cache of tag -> embedding for all tags in the store."""
+        import numpy as np
         if self._tag_cache is not None:
             return self._tag_cache
         topics = self.list_topics()
@@ -52,6 +51,7 @@ class MemoryStore:
 
     def _expand_tags(self, filter_tags: list[str]) -> set[str]:
         """Expand filter tags to include semantically similar known tags."""
+        import numpy as np
         tag_embeddings = self._get_tag_embeddings()
         if not tag_embeddings:
             return set(filter_tags)

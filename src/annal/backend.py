@@ -5,9 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Protocol
 
-import numpy as np
-from chromadb.utils.embedding_functions import ONNXMiniLM_L6_V2
-
 
 @dataclass
 class VectorResult:
@@ -59,21 +56,3 @@ class Embedder(Protocol):
     def embed(self, text: str) -> list[float]: ...
 
     def embed_batch(self, texts: list[str]) -> list[list[float]]: ...
-
-
-class OnnxEmbedder:
-    """Default embedder using the ONNX MiniLM-L6-V2 model."""
-
-    def __init__(self) -> None:
-        self._fn = ONNXMiniLM_L6_V2()
-        self._dimension = len(self._fn(["test"])[0])
-
-    @property
-    def dimension(self) -> int:
-        return self._dimension
-
-    def embed(self, text: str) -> list[float]:
-        return self._fn([text])[0].tolist()
-
-    def embed_batch(self, texts: list[str]) -> list[list[float]]:
-        return [e.tolist() for e in self._fn(texts)]

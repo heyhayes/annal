@@ -654,7 +654,7 @@ def main() -> None:
         return
 
     if args.command == "migrate":
-        from annal.backend import OnnxEmbedder
+        from annal.embedder import OnnxEmbedder
         from annal.migrate import migrate
 
         config = AnnalConfig.load(args.config)

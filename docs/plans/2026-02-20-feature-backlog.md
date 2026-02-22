@@ -91,6 +91,22 @@ Compiled from the initial spike. Items marked with [field] are things to validat
 - ~~Config-driven backend selection~~ — `storage:` section in config.yaml selects backend (`chromadb` or `qdrant`) with per-backend config (path, url, hybrid flag).
 - ~~Migration CLI~~ — `annal migrate --from chromadb --to qdrant --project <name>` scans source, re-embeds in batches of 100, inserts into destination.
 
+## From 0.6.0 code review
+
+- B3: Dead `json.loads` fallbacks in `store.py` `list_topics()` and `stats()` — `isinstance(tags, str)` branches handle legacy JSON-encoded tags, but `ChromaBackend._deserialize_meta` already converts before returning `VectorResult`. Verify no path bypasses the backend, then remove.
+- B4: Migration timestamp preservation — `migrate()` calls `backend.insert()` directly (not `store.store()`), so `created_at`/`updated_at` pass through in metadata. Correct but non-obvious — add a test assertion or comment.
+- B5: `QdrantBackend.scan` batch_size calculation at line 233 is harder to reason about than needed — the fallback `batch_size = limit` when it goes to zero over-fetches. Simplify to fixed-size batches (e.g. always 100) and collect until enough.
+- D1: `OnnxEmbedder.__init__` embeds "test" to measure dimension — dimension for MiniLM-L6-V2 is always 384. ~~Fixed: hardcoded in `embedder.py`.~~
+- D2: Tag cache (`_tag_cache`) in `store.py` is not thread-safe — GIL prevents corruption but stale reads are possible. Add `threading.Lock` around cache access.
+- D3: `bulk_delete_filter` in dashboard `routes.py` loads all matching records into memory to extract IDs. Add a `delete_by_filter()` method on the backend for large-scale deletes.
+- D4: Multiplicative overfetch — `MemoryStore.search()` overfetches `max(limit*3, 20)` and `ChromaBackend.query()` also overfetches `limit*3`. With both, `limit=100` queries 900 results. Document or cap.
+- D5: `_normalize_tags` return type is implicitly `list[str] | None` — add explicit type annotation.
+- N1: `import json` inside method bodies in `store.py` — move to module top or remove if B3 dead code is confirmed.
+- N2: `import json as json_mod` in `server.py` `search_memories` — rename collision avoidance for a variable that doesn't exist. Use `import json` at module top.
+- N3: `config.py` `save()` only writes `watch: false`, omits `watch: true` — smart but potentially confusing. Consider always writing it.
+- N4: `chromadb.py` line 64 `min(n, total) or 1` — the `or 1` handles `total == 0` but that's already short-circuited above. Dead code.
+- Suggestion: backend conformance test suite — shared parametrized fixtures (`@pytest.fixture(params=[chroma_factory, qdrant_factory])`) to reduce duplication between `test_backend_chromadb.py` and `test_backend_qdrant.py`.
+
 ## Parked
 
 - ~~`annal --install-service` CLI command~~ — shipped as `annal install` in spike 3
@@ -176,6 +192,19 @@ Compiled from the initial spike. Items marked with [field] are things to validat
 - ~~`_annal_executable()` fallback breaks launchd~~ — fixed in spike 4: returns list
 - ~~Test gaps~~ — fixed in spike 4: added nonexistent update, no-op update, install idempotency, executable return type, heading depth tests
 - `annal serve` subcommand may be dead weight — existing service files and scripts use bare `annal --transport ...`. The `serve` subcommand adds argparse complexity for no current consumers.
+
+## Production readiness
+
+Priority order for reaching production grade:
+
+- Export/import (JSONL) — `annal export --project foo > backup.jsonl` and `annal import backup.jsonl --project foo`. Scan via backend, write id + text + metadata per line. This is the data safety baseline — without it, corruption or accidental deletes mean total loss. Straightforward to build on top of `scan()`. Also enables testing, portability, and open-source onboarding.
+- Memory supersession — `supersedes` param on `store_memory` that links to the old memory ID. Old memory gets `superseded_by` in metadata and drops out of search results by default (still retrievable via `get`). When a store call has high similarity to an existing memory, return a hint suggesting the agent pass `supersedes`. Solves the stale decision problem without requiring agents to remember a workflow.
+- Search summary mode — `mode="summary"` returns first ~200 chars of content alongside metadata. Sits between probe (IDs + scores) and full (entire content). Eliminates the two-round-trip friction for the common "do I know anything about this?" pattern.
+- Grouped search results — when results include both agent memories and file-indexed content, return them in two ranked groups rather than a single blended list. Prevents mediocre file chunks from outranking relevant memories. Display change, not architectural — the query still searches both, the response just structures them separately.
+- Usage tracking — `hit_count` and `last_accessed` fields updated when a memory appears in `expand_memories` results. Memories not accessed in 60+ days are candidates for review/archival. `annal stats --stale` CLI command to surface them. Lightweight telemetry with no external dependencies.
+- Health endpoint — `/healthz` on the HTTP server that checks backend connectivity. Lets monitoring systems detect when Qdrant is down before agents start failing.
+- Graceful backend failure — when Qdrant is unreachable, return a descriptive MCP error instead of surfacing a raw Python traceback. Optional retry with backoff for transient failures.
+- Auth (if multi-user) — bearer token or API key on the HTTP transport. Not needed for single-user localhost, but required before exposing on a network or sharing a Qdrant instance across a team.
 
 ## Future considerations (not for next spike)
 

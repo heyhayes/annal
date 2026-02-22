@@ -17,7 +17,7 @@ try:
 except ImportError:
     _qdrant_available = lambda: False
 
-from annal.backend import OnnxEmbedder
+from annal.embedder import OnnxEmbedder
 from annal.store import MemoryStore
 
 pytestmark = pytest.mark.skipif(not _qdrant_available(), reason="Qdrant not available")

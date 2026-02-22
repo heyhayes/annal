@@ -4,7 +4,7 @@ import uuid
 
 import pytest
 
-from annal.backend import OnnxEmbedder
+from annal.embedder import OnnxEmbedder
 
 try:
     from qdrant_client import QdrantClient

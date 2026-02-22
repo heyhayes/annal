@@ -138,7 +138,8 @@ class QdrantBackend:
         qfilter = self._build_filter(native) if native else None
         fetch_limit = limit * 3 if post else limit
 
-        if self._hybrid and query_text:
+        is_rrf = self._hybrid and query_text
+        if is_rrf:
             results = self._client.query_points(
                 collection_name=self._collection,
                 prefetch=[
@@ -172,7 +173,7 @@ class QdrantBackend:
                 with_payload=True,
             )
 
-        items = [self._to_result(p) for p in results.points]
+        items = [self._to_result(p, rrf=is_rrf) for p in results.points]
         if post:
             items = [r for r in items if self._matches_post_filter(r, post)]
         return items[:limit]
@@ -351,15 +352,24 @@ class QdrantBackend:
         return True
 
     @staticmethod
-    def _to_result(point) -> VectorResult:
+    def _to_result(point, rrf: bool = False) -> VectorResult:
         """Convert a Qdrant point/record to VectorResult."""
         payload = dict(point.payload or {})
         text = payload.pop("text", "")
         annal_id = payload.pop("_annal_id", str(point.id))
         score = getattr(point, "score", None)
+        if score is None:
+            distance = None
+        elif rrf:
+            # RRF scores are rank-based, not cosine. Use 1/score so lower
+            # distance = better rank, preserving sort order for consumers
+            # that treat distance as "lower is better".
+            distance = 1.0 / score if score > 0 else 0.0
+        else:
+            distance = 1.0 - score
         return VectorResult(
             id=annal_id,
             text=text,
             metadata=payload,
-            distance=1.0 - score if score is not None else None,
+            distance=distance,
         )

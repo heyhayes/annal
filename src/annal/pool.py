@@ -7,7 +7,8 @@ import threading
 from collections.abc import Callable
 from datetime import datetime, timezone
 
-from annal.backend import Embedder, OnnxEmbedder, VectorBackend
+from annal.backend import Embedder, VectorBackend
+from annal.embedder import OnnxEmbedder
 from annal.config import AnnalConfig
 from annal.events import event_bus, Event
 from annal.store import MemoryStore

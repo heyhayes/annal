@@ -2,7 +2,7 @@
 
 import pytest
 
-from annal.backend import OnnxEmbedder
+from annal.embedder import OnnxEmbedder
 from annal.backends.chromadb import ChromaBackend
 
 
