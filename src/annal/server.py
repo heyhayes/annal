@@ -139,6 +139,17 @@ Use `retag_memory` to fix or refine tags after storage without changing content.
 Supports `add_tags`, `remove_tags` (incremental), or `set_tags` (full replace).
   retag_memory(project="myapp", memory_id="...", add_tags=["billing"], remove_tags=["misc"])
 
+## Memory supersession
+
+When a decision changes or knowledge is updated, use `supersedes` to replace the old
+memory instead of just storing a new one:
+  store_memory(project="myapp", content="We now use JWT", tags=["decision", "auth"],
+               supersedes="<old-memory-id>")
+
+The old memory is hidden from search but preserved for audit. If you get a similarity
+hint when storing (score 0.80–0.95), consider whether the new memory replaces the
+similar one. Use `include_superseded=True` on search_memories to see replaced memories.
+
 ## Decision verification
 
 Before accepting, proposing, or implementing a design decision, search annal
@@ -203,7 +214,13 @@ def create_server(
     atexit.register(pool.shutdown)
 
     @mcp.tool()
-    def store_memory(project: str, content: str, tags: list[str] | str, source: str = "") -> str:
+    def store_memory(
+        project: str,
+        content: str,
+        tags: list[str] | str,
+        source: str = "",
+        supersedes: str | None = None,
+    ) -> str:
         """Store a piece of knowledge in a project's memory.
 
         Args:
@@ -211,25 +228,45 @@ def create_server(
             content: The knowledge to store
             tags: Domain labels like ["billing", "checkout", "pricing"]
             source: Where this knowledge came from (file path, "session observation", etc.)
+            supersedes: Optional ID of a memory this one replaces. The old memory
+                        will be hidden from search but preserved for audit.
         """
         tags = _normalize_tags(tags)
         store = pool.get_store(project)
+        hints: list[str] = []
 
-        # Check for near-duplicate before storing — over-fetch so file-indexed
-        # chunks at the top don't hide a real agent-memory duplicate further down
-        existing = store.search(query=content, limit=10)
-        for candidate in existing:
-            if candidate["chunk_type"] != "agent-memory":
-                continue
-            if candidate["score"] > 0.95:
-                return (
-                    f"[{project}] Skipped — similar memory already exists "
-                    f"(score: {candidate['score']:.2f}, ID: {candidate['id']})"
-                )
+        # When superseding, skip dedup — the agent already knows what it's replacing
+        if not supersedes:
+            # Check for near-duplicate before storing — over-fetch so file-indexed
+            # chunks at the top don't hide a real agent-memory duplicate further down
+            existing = store.search(query=content, limit=10)
+            for candidate in existing:
+                if candidate["chunk_type"] != "agent-memory":
+                    continue
+                if candidate["score"] > 0.95:
+                    return (
+                        f"[{project}] Skipped — similar memory already exists "
+                        f"(score: {candidate['score']:.2f}, ID: {candidate['id']})"
+                    )
+                if candidate["score"] >= 0.80:
+                    hints.append(
+                        f"Note: similar memory found (score: {candidate['score']:.2f}, "
+                        f"ID: {candidate['id']}). To replace it, call store_memory "
+                        f"with supersedes={candidate['id']}."
+                    )
 
-        mem_id = store.store(content=content, tags=tags, source=source)
+        mem_id = store.store(content=content, tags=tags, source=source, supersedes=supersedes)
         event_bus.push(Event(type="memory_stored", project=project, detail=mem_id))
-        return f"[{project}] Stored memory {mem_id}"
+
+        if supersedes:
+            msg = f"[{project}] Stored memory {mem_id} (supersedes {supersedes})"
+        else:
+            msg = f"[{project}] Stored memory {mem_id}"
+
+        if not supersedes and hints:
+            msg += "\n" + "\n".join(hints)
+
+        return msg
 
     @mcp.tool()
     def search_memories(
@@ -243,6 +280,7 @@ def create_server(
         before: str | None = None,
         output: str = "text",
         projects: list[str] | str | None = None,
+        include_superseded: bool = False,
     ) -> str:
         """Search project memories using natural language.
 
@@ -261,6 +299,8 @@ def create_server(
             projects: Optional list of project names to search across, or "*" for all
                       configured projects. Results are merged by score. Each result includes
                       a project field. When omitted, searches only the primary project.
+            include_superseded: Include memories that have been replaced by newer versions
+                                (default False — superseded memories are hidden)
         """
 
         tags = _normalize_tags(tags)
@@ -283,7 +323,7 @@ def create_server(
         for proj_name in search_projects:
             store = pool.get_store(proj_name)
             try:
-                proj_results = store.search(query=query, tags=tags, limit=limit, after=after, before=before)
+                proj_results = store.search(query=query, tags=tags, limit=limit, after=after, before=before, include_superseded=include_superseded)
             except ValueError as e:
                 return f"[{project}] Error: {e}"
             for r in proj_results:

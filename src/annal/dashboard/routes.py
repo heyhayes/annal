@@ -57,6 +57,7 @@ def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
         except (ValueError, TypeError):
             page = 1
         q = params.get("q", "")
+        superseded = params.get("superseded", "") == "1"
         return {
             "project": project,
             "projects": projects,
@@ -66,6 +67,7 @@ def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
             "tags": tags or None,
             "page": page,
             "q": q,
+            "include_superseded": superseded,
         }
 
     def _fetch_memories(pool: StorePool, params: dict) -> dict:
@@ -81,6 +83,7 @@ def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
                 query=params["q"],
                 limit=PAGE_SIZE,
                 tags=params["tags"],
+                include_superseded=params.get("include_superseded", False),
             )
             total = len(results)
             memories = results
@@ -92,6 +95,7 @@ def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
                 chunk_type=params["chunk_type"],
                 source_prefix=params["source_prefix"],
                 tags=params["tags"],
+                include_superseded=params.get("include_superseded", False),
             )
             total_pages = max(1, math.ceil(total / PAGE_SIZE))
 
@@ -106,17 +110,19 @@ def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
             "source": params["source_prefix"] or "",
             "tags": ",".join(params["tags"]) if params["tags"] else "",
             "q": params["q"],
+            "superseded": "1" if params.get("include_superseded") else "",
         }
 
     def _fetch_cross_project(pool: StorePool, params: dict) -> dict:
         """Search across all projects, merge results by score."""
         query = params["q"]
         tags = params["tags"]
+        include_superseded = params.get("include_superseded", False)
         all_results = []
         if query:
             for name in sorted(config.projects):
                 store = pool.get_store(name)
-                results = store.search(query=query, limit=PAGE_SIZE, tags=tags)
+                results = store.search(query=query, limit=PAGE_SIZE, tags=tags, include_superseded=include_superseded)
                 for mem in results:
                     mem["project"] = name
                 all_results.extend(results)
@@ -134,6 +140,7 @@ def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
             "source": "",
             "tags": ",".join(tags) if tags else "",
             "q": query,
+            "superseded": "1" if include_superseded else "",
         }
 
     async def memories(request: Request) -> Response:
@@ -209,14 +216,15 @@ def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
 
         tags_raw = form.get("tags", "")
         tags = [t.strip() for t in tags_raw.split(",") if t.strip()] if tags_raw else None
+        include_superseded = form.get("superseded", "") == "1"
 
         if cross:
-            params = {"q": query, "tags": tags}
+            params = {"q": query, "tags": tags, "include_superseded": include_superseded}
             ctx = _fetch_cross_project(pool, params)
         else:
             limit = int(form.get("limit", str(PAGE_SIZE)))
             store = pool.get_store(project)
-            results = store.search(query=query, tags=tags, limit=limit)
+            results = store.search(query=query, tags=tags, limit=limit, include_superseded=include_superseded)
             ctx = {
                 "memories": results,
                 "project": project,
@@ -228,6 +236,7 @@ def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
                 "source": form.get("source", ""),
                 "tags": tags_raw,
                 "q": query,
+                "superseded": "1" if include_superseded else "",
             }
         return templates.TemplateResponse(request, "_table.html", ctx)
 

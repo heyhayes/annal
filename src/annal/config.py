@@ -96,7 +96,7 @@ class AnnalConfig:
                     "watch_paths": proj.watch_paths,
                     "watch_patterns": proj.watch_patterns,
                     "watch_exclude": proj.watch_exclude,
-                    **({"watch": proj.watch} if not proj.watch else {}),
+                    "watch": proj.watch,
                 }
                 for name, proj in self.projects.items()
             },

@@ -509,3 +509,69 @@ def test_fuzzy_tag_matches_dbs_to_database(tmp_data_dir):
     results = store.search("primary", tags=["dbs"], limit=5)
     assert len(results) == 1
     assert "PostgreSQL" in results[0]["content"]
+
+
+def test_search_excludes_superseded_by_default(tmp_data_dir):
+    """Superseded memories should not appear in search results by default."""
+    store = make_store(tmp_data_dir, "supersede_search")
+    old_id = store.store(content="We use session cookies for auth", tags=["decision", "auth"])
+    store.store(content="We use JWT for auth", tags=["decision", "auth"], supersedes=old_id)
+
+    results = store.search("auth decision", limit=10)
+    ids = [r["id"] for r in results]
+    assert old_id not in ids
+
+
+def test_search_includes_superseded_when_requested(tmp_data_dir):
+    """include_superseded=True should return superseded memories."""
+    store = make_store(tmp_data_dir, "supersede_include")
+    old_id = store.store(content="We use session cookies for auth", tags=["decision", "auth"])
+    new_id = store.store(content="We use JWT for auth", tags=["decision", "auth"], supersedes=old_id)
+
+    results = store.search("auth decision", limit=10, include_superseded=True)
+    ids = [r["id"] for r in results]
+    assert old_id in ids
+    assert new_id in ids
+
+
+def test_browse_excludes_superseded_by_default(tmp_data_dir):
+    """Superseded memories should not appear in browse results by default."""
+    store = make_store(tmp_data_dir, "supersede_browse")
+    old_id = store.store(content="Old decision", tags=["decision"])
+    store.store(content="New decision", tags=["decision"], supersedes=old_id)
+
+    results, total = store.browse()
+    ids = [r["id"] for r in results]
+    assert old_id not in ids
+    assert total == 1
+
+
+def test_browse_includes_superseded_when_requested(tmp_data_dir):
+    """include_superseded=True should return superseded memories in browse."""
+    store = make_store(tmp_data_dir, "supersede_browse_inc")
+    old_id = store.store(content="Old decision", tags=["decision"])
+    store.store(content="New decision", tags=["decision"], supersedes=old_id)
+
+    results, total = store.browse(include_superseded=True)
+    ids = [r["id"] for r in results]
+    assert old_id in ids
+    assert total == 2
+
+
+def test_store_supersedes_marks_old_memory(tmp_data_dir):
+    """store(supersedes=...) should set superseded_by on the old memory."""
+    store = make_store(tmp_data_dir, "supersede_mark")
+    old_id = store.store(content="Old decision", tags=["decision"])
+    new_id = store.store(content="New decision", tags=["decision"], supersedes=old_id)
+
+    results = store.get_by_ids([old_id])
+    assert results[0]["superseded_by"] == new_id
+
+
+def test_store_supersedes_nonexistent_id_does_not_error(tmp_data_dir):
+    """store(supersedes=...) with a nonexistent ID should silently succeed."""
+    store = make_store(tmp_data_dir, "supersede_missing")
+    new_id = store.store(content="New decision", tags=["decision"], supersedes="nonexistent-id-xyz")
+    assert new_id is not None
+    results = store.search("New decision", limit=1)
+    assert len(results) == 1

@@ -153,13 +153,15 @@ Every tool takes a `project` parameter. Use the directory name of the codebase y
 
 ## Tools
 
-`store_memory` — Store knowledge with tags and source attribution. Near-duplicates (>95% similarity) are automatically skipped.
+`store_memory` — Store knowledge with tags and source attribution. Near-duplicates (>95% similarity) are automatically skipped. When a similar memory is found (80-95% similarity), a hint suggests using the `supersedes` parameter to replace it. Pass `supersedes=<old_id>` to mark the old memory as replaced — it drops out of search but remains for audit.
 
-`search_memories` — Natural language search with optional tag filtering and similarity scores. Supports `mode="probe"` for compact summaries (saves context window) and `mode="full"` for complete content. Optional `min_score` filter suppresses low-relevance noise. Tags use fuzzy matching (semantic similarity) so `tags=["auth"]` finds memories tagged `authentication`. Optional `projects` parameter enables cross-project search.
+`search_memories` — Natural language search with optional tag filtering and similarity scores. Three output modes: `mode="summary"` (default) returns first 200 chars with metadata, `mode="probe"` returns compact one-line summaries for scanning large result sets, and `mode="full"` returns complete content. Optional `min_score` filter suppresses low-relevance noise. Tags use fuzzy matching (semantic similarity) so `tags=["auth"]` finds memories tagged `authentication`. Temporal filtering with `after` and `before` (ISO 8601 dates) scopes results by creation date. Optional `projects` parameter enables cross-project search (`projects="*"` searches all configured projects). Pass `include_superseded=True` to surface replaced memories.
 
 `expand_memories` — Retrieve full content for specific memory IDs. Use after a probe search to fetch details for relevant results.
 
 `update_memory` — Revise content, tags, or source on an existing memory without losing its ID or creation timestamp. Tracks `updated_at` alongside the original.
+
+`retag_memory` — Modify tags on an existing memory without changing content. Supports `add_tags`/`remove_tags` for incremental edits, or `set_tags` to replace all tags at once.
 
 `delete_memory` — Remove a specific memory by ID.
 
@@ -220,6 +222,15 @@ Install the Qdrant client dependency: `pip install annal[qdrant]`
 
 To migrate existing data between backends: `annal migrate --from chromadb --to qdrant --project myapp`
 
+### Export / Import
+
+Back up and restore memories as JSONL:
+
+```bash
+annal export --project myapp > backup.jsonl
+annal import --project myapp backup.jsonl
+```
+
 ## Running as a daemon
 
 The recommended approach is `annal install`, which sets up the service for your OS automatically.
@@ -252,13 +263,7 @@ Start-ScheduledTask -TaskName "Annal MCP Server"
 
 ## Dashboard
 
-When running as an HTTP daemon, the dashboard is available at `http://localhost:9200`. It provides:
-
-- Memory browsing with pagination and filters (by type, source, tags)
-- Full-text search across memories
-- Expandable content previews
-- Bulk delete by filter
-- Live SSE updates when memories are stored, deleted, or indexing is in progress
+When running as an HTTP daemon, the dashboard is available at `http://localhost:9200`. It provides memory browsing with pagination and filters (by type, source, tags), semantic search with cross-project support, expandable content previews, bulk delete by selection or filter, a "Show superseded" toggle for viewing replaced memories, and live SSE updates when memories are stored, deleted, or indexing is in progress. Clickable tag pills in the table jump to filtered views.
 
 Disable with `--no-dashboard` if not needed.
 
@@ -282,8 +287,17 @@ Seven fixes from stress testing: min_score no longer masks fuzzy tag matches, cr
 ### 0.6.0 — Vector Backend Abstraction + Qdrant (shipped)
 VectorBackend protocol with pluggable backends. ChromaDB extracted behind protocol. QdrantBackend with native tag filtering, hybrid BM25+vector search via RRF, deterministic UUID mapping. Config-driven backend selection. Migration CLI (`annal migrate`).
 
+### 0.6.1 — Retag + Dashboard UX (shipped)
+`retag_memory` tool for incremental tag editing. Dashboard improvements: project overview table, clickable tag pills, cross-project search. Search default mode changed from `full` to `summary`.
+
+### 0.6.2 — Hardening + Export/Import (shipped)
+Export/import CLI (`annal export`, `annal import`) for JSONL-based backup and restore. Bug fixes for dedup, tag normalization, and startup reconciliation. Backend conformance improvements.
+
+### 0.6.3 — Memory Supersession (shipped)
+`supersedes` parameter on `store_memory` marks old memories as replaced. Superseded memories hidden from search/browse by default, visible with `include_superseded=True`. `$not_exists` post-filter operator for both backends. Similarity hints (0.80-0.95) suggest supersession to agents. Dashboard "Show superseded" toggle. Backend conformance test suite extracted into parametrized shared tests.
+
 ### Future
-Memory relationships and supersession. Proactive context injection. CLI subcommands. Import/export.
+Proactive context injection. Memory relationships beyond supersession.
 
 ## Development
 
@@ -292,7 +306,7 @@ pip install -e ".[dev]"
 pytest -v
 ```
 
-Tests cover store operations, search, indexing, file watching, dashboard routes, SSE events, and CLI installation.
+227 tests cover store operations, search, supersession, indexing, file watching, dashboard routes, SSE events, CLI installation, export/import, migration, and a shared backend conformance suite that runs against both ChromaDB and Qdrant.
 
 ## License
 

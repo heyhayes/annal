@@ -88,6 +88,7 @@ class MemoryStore:
         tags: list[str] | None = None,
         after: str | None = None,
         before: str | None = None,
+        include_superseded: bool = False,
     ) -> dict | None:
         """Build a where clause dict from filter parameters."""
         where: dict = {}
@@ -104,6 +105,8 @@ class MemoryStore:
         if before:
             where.setdefault("created_at", {})
             where["created_at"]["$lt"] = before
+        if not include_superseded:
+            where["superseded_by"] = {"$not_exists": True}
         return where or None
 
     def store(
@@ -113,6 +116,7 @@ class MemoryStore:
         source: str = "",
         chunk_type: str = "agent-memory",
         file_mtime: float | None = None,
+        supersedes: str | None = None,
     ) -> str:
         mem_id = str(uuid.uuid4())
         embedding = self._embedder.embed(content)
@@ -125,6 +129,14 @@ class MemoryStore:
         if file_mtime is not None:
             metadata["file_mtime"] = file_mtime
         self._backend.insert(mem_id, content, embedding, metadata)
+
+        if supersedes:
+            old = self._backend.get([supersedes])
+            if old:
+                old_meta = dict(old[0].metadata)
+                old_meta["superseded_by"] = mem_id
+                self._backend.update(supersedes, text=None, embedding=None, metadata=old_meta)
+
         self._invalidate_tag_cache()
         return mem_id
 
@@ -135,6 +147,7 @@ class MemoryStore:
         tags: list[str] | None = None,
         after: str | None = None,
         before: str | None = None,
+        include_superseded: bool = False,
     ) -> list[dict]:
         if after:
             normalized = _normalize_date_bound(after, end_of_day=False)
@@ -151,7 +164,7 @@ class MemoryStore:
             return []
 
         embedding = self._embedder.embed(query)
-        where = self._build_where(tags=tags, after=after, before=before)
+        where = self._build_where(tags=tags, after=after, before=before, include_superseded=include_superseded)
 
         # Backends handle their own overfetch for post-filtering
         results = self._backend.query(embedding, limit=limit, where=where, query_text=query)
@@ -160,7 +173,7 @@ class MemoryStore:
         for r in results:
             distance = r.distance if r.distance is not None else 0.0
             score = 1.0 - distance
-            memories.append({
+            mem: dict = {
                 "id": r.id,
                 "content": r.text,
                 "tags": r.metadata.get("tags", []),
@@ -170,7 +183,10 @@ class MemoryStore:
                 "distance": distance,
                 "created_at": r.metadata.get("created_at", ""),
                 "updated_at": r.metadata.get("updated_at", ""),
-            })
+            }
+            if r.metadata.get("superseded_by"):
+                mem["superseded_by"] = r.metadata["superseded_by"]
+            memories.append(mem)
 
         return memories[:limit]
 
@@ -316,6 +332,7 @@ class MemoryStore:
         chunk_type: str | None = None,
         source_prefix: str | None = None,
         tags: list[str] | None = None,
+        include_superseded: bool = False,
     ) -> tuple[list[dict], int]:
         """Paginated retrieval with optional filters. Returns (results, total_matching)."""
         if self._backend.count() == 0:
@@ -325,6 +342,7 @@ class MemoryStore:
             chunk_type=chunk_type,
             source_prefix=source_prefix,
             tags=tags,
+            include_superseded=include_superseded,
         )
 
         results, total = self._backend.scan(offset=offset, limit=limit, where=where)
@@ -349,7 +367,7 @@ class MemoryStore:
     @staticmethod
     def _format_result(r: VectorResult) -> dict:
         """Convert a VectorResult to the dict format expected by callers."""
-        return {
+        result = {
             "id": r.id,
             "content": r.text,
             "tags": r.metadata.get("tags", []),
@@ -358,3 +376,6 @@ class MemoryStore:
             "created_at": r.metadata.get("created_at", ""),
             "updated_at": r.metadata.get("updated_at", ""),
         }
+        if r.metadata.get("superseded_by"):
+            result["superseded_by"] = r.metadata["superseded_by"]
+        return result
