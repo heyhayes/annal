@@ -196,7 +196,9 @@ class StorePool:
                 t for t in self._reconcile_threads if t.is_alive()
             ]
 
-        for project, watcher in self._watchers.items():
+        with self._lock:
+            watchers = dict(self._watchers)
+            self._watchers.clear()
+        for project, watcher in watchers.items():
             logger.info("Stopping watcher for project '%s'", project)
             watcher.stop()
-        self._watchers.clear()

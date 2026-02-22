@@ -114,6 +114,7 @@ class FileWatcher:
         for watch_path in self._config.watch_paths:
             root = Path(watch_path)
             if not root.exists():
+                logger.warning("Watch path does not exist, skipping: %s", watch_path)
                 continue
             for path in root.rglob("*"):
                 if path.is_dir():
@@ -147,6 +148,7 @@ class FileWatcher:
         self._observer = Observer()
         for watch_path in self._config.watch_paths:
             if not Path(watch_path).exists():
+                logger.warning("Watch path does not exist, skipping: %s", watch_path)
                 continue
             handler = _IndexHandler(self._store, self._config, watch_path)
             self._observer.schedule(handler, watch_path, recursive=True)

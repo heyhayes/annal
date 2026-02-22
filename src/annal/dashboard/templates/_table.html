@@ -19,7 +19,7 @@
   </td>
   <td class="col-tags">
     {% for tag in mem.tags %}
-    <span class="tag-pill tag-clickable" onclick="filterByTag('{{ tag }}')">{{ tag }}</span>
+    <span class="tag-pill tag-clickable" data-tag="{{ tag }}">{{ tag }}</span>
     {% endfor %}
   </td>
   <td class="col-type">

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import threading
 import uuid
 from datetime import datetime, timezone
 
@@ -29,25 +30,31 @@ class MemoryStore:
     def __init__(self, backend: VectorBackend, embedder: Embedder) -> None:
         self._backend = backend
         self._embedder = embedder
-        self._tag_cache: dict[str, np.ndarray] | None = None
+        self._tag_cache: dict | None = None
+        self._tag_cache_lock = threading.Lock()
 
     def _invalidate_tag_cache(self) -> None:
         """Clear the tag embedding cache. Called after store/update/delete."""
-        self._tag_cache = None
+        with self._tag_cache_lock:
+            self._tag_cache = None
 
-    def _get_tag_embeddings(self) -> dict[str, "np.ndarray"]:
+    def _get_tag_embeddings(self) -> dict:
         """Get or build a cache of tag -> embedding for all tags in the store."""
         import numpy as np
-        if self._tag_cache is not None:
-            return self._tag_cache
+        with self._tag_cache_lock:
+            if self._tag_cache is not None:
+                return self._tag_cache
         topics = self.list_topics()
         if not topics:
-            self._tag_cache = {}
-            return self._tag_cache
+            with self._tag_cache_lock:
+                self._tag_cache = {}
+                return self._tag_cache
         tag_names = list(topics.keys())
         embeddings = self._embedder.embed_batch(tag_names)
-        self._tag_cache = {name: np.array(emb) for name, emb in zip(tag_names, embeddings)}
-        return self._tag_cache
+        cache = {name: np.array(emb) for name, emb in zip(tag_names, embeddings)}
+        with self._tag_cache_lock:
+            self._tag_cache = cache
+            return self._tag_cache
 
     def _expand_tags(self, filter_tags: list[str]) -> set[str]:
         """Expand filter tags to include semantically similar known tags."""
@@ -146,11 +153,8 @@ class MemoryStore:
         embedding = self._embedder.embed(query)
         where = self._build_where(tags=tags, after=after, before=before)
 
-        # Over-fetch to give the backend room for post-filtering if needed
-        needs_overfetch = tags or after or before
-        query_limit = max(limit * 3, 20) if needs_overfetch else limit
-
-        results = self._backend.query(embedding, limit=query_limit, where=where, query_text=query)
+        # Backends handle their own overfetch for post-filtering
+        results = self._backend.query(embedding, limit=limit, where=where, query_text=query)
 
         memories = []
         for r in results:
@@ -275,11 +279,7 @@ class MemoryStore:
     def list_topics(self) -> dict[str, int]:
         tag_counts: dict[str, int] = {}
         for _, meta in self._iter_metadata():
-            tags = meta.get("tags", [])
-            if isinstance(tags, str):
-                import json
-                tags = json.loads(tags)
-            for tag in tags:
+            for tag in meta.get("tags", []):
                 tag_counts[tag] = tag_counts.get(tag, 0) + 1
         return tag_counts
 
@@ -339,11 +339,7 @@ class MemoryStore:
             total += 1
             chunk_type = meta.get("chunk_type", "")
             by_type[chunk_type] = by_type.get(chunk_type, 0) + 1
-            tags = meta.get("tags", [])
-            if isinstance(tags, str):
-                import json
-                tags = json.loads(tags)
-            for tag in tags:
+            for tag in meta.get("tags", []):
                 by_tag[tag] = by_tag.get(tag, 0) + 1
         return {"total": total, "by_type": by_type, "by_tag": by_tag}
 

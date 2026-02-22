@@ -52,7 +52,10 @@ def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
         source_prefix = params.get("source", "")
         tags_raw = params.get("tags", "")
         tags = [t.strip() for t in tags_raw.split(",") if t.strip()] if tags_raw else []
-        page = int(params.get("page", "1"))
+        try:
+            page = int(params.get("page", "1"))
+        except (ValueError, TypeError):
+            page = 1
         q = params.get("q", "")
         return {
             "project": project,
@@ -277,7 +280,9 @@ def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
                         event = await loop.run_in_executor(
                             None, lambda: q.get(timeout=30)
                         )
-                        yield f"event: {event.type}\ndata: {event.project}|{event.detail}\n\n"
+                        safe_project = event.project.replace("\n", " ")
+                        safe_detail = event.detail.replace("\n", " ")
+                        yield f"event: {event.type}\ndata: {safe_project}|{safe_detail}\n\n"
                     except queue.Empty:
                         # Timeout — send keepalive comment
                         yield ": keepalive\n\n"

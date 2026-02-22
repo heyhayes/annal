@@ -144,12 +144,14 @@ function toggleExpand(td) {
   td.classList.toggle('expanded');
 }
 
-function filterByTag(tag) {
+document.addEventListener('click', function(e) {
+  var pill = e.target.closest('.tag-clickable[data-tag]');
+  if (!pill) return;
   var input = document.querySelector('input[name="tags"]');
   if (!input) return;
-  input.value = tag;
+  input.value = pill.dataset.tag;
   input.dispatchEvent(new Event('changed'));
-}
+});
 
 function toggleBulkBtn() {
   const btn = document.getElementById('bulk-delete-btn');

@@ -488,12 +488,12 @@ async def test_search_json_output(mcp):
     assert "meta" in data
     assert len(data["results"]) > 0
     assert data["meta"]["project"] == "test"
-    assert data["meta"]["mode"] == "full"
+    assert data["meta"]["mode"] == "summary"  # default changed from "full" in spike 9
     assert data["meta"]["query"] == "JSON output"
 
     first = data["results"][0]
     assert "id" in first
-    assert "content" in first
+    assert "content_preview" in first  # summary mode returns preview, not full content
     assert "tags" in first
     assert "score" in first
     assert "source" in first
@@ -940,3 +940,36 @@ async def test_update_memory_emits_event(mcp):
         "content": "Updated content for event test",
     })
     assert "Updated memory" in result
+
+
+@pytest.mark.asyncio
+async def test_delete_memory_not_found(mcp):
+    """delete_memory on nonexistent ID returns not-found message instead of silent success."""
+    result = await _call(mcp, "delete_memory", {
+        "project": "test",
+        "memory_id": "nonexistent-id-xyz",
+    })
+    assert "not found" in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_search_default_mode_is_summary(mcp):
+    """Default mode should be 'summary' (not 'full')."""
+    import json
+
+    await _call(mcp, "store_memory", {
+        "project": "test",
+        "content": "A" * 300 + " long content test",
+        "tags": ["test"],
+    })
+
+    result = await _call(mcp, "search_memories", {
+        "project": "test",
+        "query": "AAAA",
+        "output": "json",
+    })
+    data = json.loads(result)
+    assert data["meta"]["mode"] == "summary"
+    # Summary mode should give content_preview, not full content
+    assert "content_preview" in data["results"][0]
+    assert "content" not in data["results"][0]

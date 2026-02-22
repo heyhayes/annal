@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import atexit
+import json
 import logging
 import sys
 import threading
@@ -236,7 +237,7 @@ def create_server(
         query: str,
         tags: list[str] | str | None = None,
         limit: int = 5,
-        mode: str = "full",
+        mode: str = "summary",
         min_score: float = 0.0,
         after: str | None = None,
         before: str | None = None,
@@ -250,8 +251,8 @@ def create_server(
             query: Natural language search query
             tags: Optional tag filter — only return memories with at least one of these tags
             limit: Maximum number of results (default 5)
-            mode: "full" returns complete content; "summary" (recommended) returns first
-                  200 chars with full metadata — enough to judge relevance without expanding;
+            mode: "summary" (default) returns first 200 chars with full metadata — enough
+                  to judge relevance without expanding; "full" returns complete content;
                   "probe" returns compact one-line summaries for scanning large result sets
             min_score: Minimum similarity score to include (default 0.0, suppresses negative scores)
             after: Optional ISO 8601 date — only return memories created after this date
@@ -261,7 +262,6 @@ def create_server(
                       configured projects. Results are merged by score. Each result includes
                       a project field. When omitted, searches only the primary project.
         """
-        import json as json_mod
 
         tags = _normalize_tags(tags)
 
@@ -299,7 +299,7 @@ def create_server(
         empty_meta = {"query": query, "mode": mode, "project": project, "total": 0, "returned": 0}
         if is_cross_project:
             empty_meta["projects_searched"] = search_projects
-        empty_json = json_mod.dumps({"results": [], "meta": empty_meta})
+        empty_json = json.dumps({"results": [], "meta": empty_meta})
 
         if not results:
             return empty_json if output == "json" else f"[{project}] No matching memories found."
@@ -336,7 +336,7 @@ def create_server(
             }
             if is_cross_project:
                 meta["projects_searched"] = search_projects
-            return json_mod.dumps({"results": json_results, "meta": meta})
+            return json.dumps({"results": json_results, "meta": meta})
 
         lines = []
         for r in results:
@@ -384,13 +384,12 @@ def create_server(
             memory_ids: List of memory IDs to expand
             output: "text" (default) for formatted text, "json" for structured JSON
         """
-        import json as json_mod
 
         store = pool.get_store(project)
         results = store.get_by_ids(memory_ids)
         if not results:
             if output == "json":
-                return json_mod.dumps({"results": []})
+                return json.dumps({"results": []})
             return f"[{project}] No memories found for the given IDs."
 
         if output == "json":
@@ -404,7 +403,7 @@ def create_server(
                     "created_at": r["created_at"],
                     "updated_at": r.get("updated_at", ""),
                 })
-            return json_mod.dumps({"results": json_results})
+            return json.dumps({"results": json_results})
 
         lines = []
         for r in results:
@@ -426,6 +425,8 @@ def create_server(
             memory_id: The ID of the memory to delete
         """
         store = pool.get_store(project)
+        if not store.get_by_ids([memory_id]):
+            return f"[{project}] Memory {memory_id} not found."
         store.delete(memory_id)
         event_bus.push(Event(type="memory_deleted", project=project, detail=memory_id))
         return f"[{project}] Deleted memory {memory_id}"
@@ -675,6 +676,87 @@ def _add_serve_args(parser: "argparse.ArgumentParser") -> None:
     )
 
 
+def _make_backend(name: str, config: AnnalConfig, collection: str, dimension: int):
+    """Create a backend instance by name using config settings."""
+    backend_config = config.storage.backends.get(name, {})
+    if name == "chromadb":
+        from annal.backends.chromadb import ChromaBackend
+        path = backend_config.get("path", config.data_dir)
+        return ChromaBackend(path=path, collection_name=collection, dimension=dimension)
+    if name == "qdrant":
+        from annal.backends.qdrant import QdrantBackend
+        url = backend_config.get("url", "http://localhost:6333")
+        hybrid = backend_config.get("hybrid", True)
+        return QdrantBackend(url=url, collection_name=collection, dimension=dimension, hybrid=hybrid)
+    raise ValueError(f"Unknown backend: {name}")
+
+
+def _run_export(config: AnnalConfig, project: str) -> None:
+    """Export all memories for a project to JSONL on stdout."""
+    from annal.embedder import OnnxEmbedder
+
+    embedder = OnnxEmbedder()
+    collection = f"annal_{project}"
+    backend = _make_backend(config.storage.backend, config, collection, embedder.dimension)
+
+    batch_size = 500
+    offset = 0
+    count = 0
+    while True:
+        results, total = backend.scan(offset=offset, limit=batch_size)
+        if not results:
+            break
+        for r in results:
+            record = {"id": r.id, "text": r.text, "metadata": r.metadata}
+            sys.stdout.write(json.dumps(record) + "\n")
+            count += 1
+        offset += len(results)
+        sys.stderr.write(f"\rExported {count}/{total} records")
+    sys.stderr.write(f"\rExported {count} records total\n")
+
+
+def _run_import(config: AnnalConfig, project: str, filepath: str) -> None:
+    """Import memories from a JSONL file into a project."""
+    from annal.embedder import OnnxEmbedder
+
+    embedder = OnnxEmbedder()
+    collection = f"annal_{project}"
+    backend = _make_backend(config.storage.backend, config, collection, embedder.dimension)
+
+    batch_texts: list[str] = []
+    batch_records: list[dict] = []
+    count = 0
+
+    with open(filepath) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            record = json.loads(line)
+            batch_texts.append(record["text"])
+            batch_records.append(record)
+
+            if len(batch_texts) >= 100:
+                _import_batch(backend, embedder, batch_records, batch_texts)
+                count += len(batch_texts)
+                sys.stderr.write(f"\rImported {count} records")
+                batch_texts.clear()
+                batch_records.clear()
+
+    if batch_texts:
+        _import_batch(backend, embedder, batch_records, batch_texts)
+        count += len(batch_texts)
+
+    sys.stderr.write(f"\rImported {count} records total\n")
+
+
+def _import_batch(backend, embedder, records: list[dict], texts: list[str]) -> None:
+    """Embed and insert a batch of records."""
+    embeddings = embedder.embed_batch(texts)
+    for record, embedding in zip(records, embeddings):
+        backend.insert(record["id"], record["text"], embedding, record["metadata"])
+
+
 def main() -> None:
     """Entry point for running the server."""
     import argparse
@@ -702,6 +784,17 @@ def main() -> None:
     migrate_parser.add_argument("--project", required=True, help="Project to migrate")
     migrate_parser.add_argument("--config", default=DEFAULT_CONFIG_PATH, help="Path to config file")
 
+    # export subcommand
+    export_parser = subparsers.add_parser("export", help="Export project memories to JSONL (stdout)")
+    export_parser.add_argument("--project", required=True, help="Project to export")
+    export_parser.add_argument("--config", default=DEFAULT_CONFIG_PATH, help="Path to config file")
+
+    # import subcommand
+    import_parser = subparsers.add_parser("import", help="Import memories from JSONL file")
+    import_parser.add_argument("--project", required=True, help="Project to import into")
+    import_parser.add_argument("file", help="Path to JSONL file")
+    import_parser.add_argument("--config", default=DEFAULT_CONFIG_PATH, help="Path to config file")
+
     args = parser.parse_args()
 
     if args.command == "install":
@@ -720,26 +813,22 @@ def main() -> None:
 
         config = AnnalConfig.load(args.config)
         embedder = OnnxEmbedder()
-        dimension = embedder.dimension
         collection = f"annal_{args.project}"
 
-        def _make_backend(name: str) -> "VectorBackend":
-            backend_config = config.storage.backends.get(name, {})
-            if name == "chromadb":
-                from annal.backends.chromadb import ChromaBackend
-                path = backend_config.get("path", config.data_dir)
-                return ChromaBackend(path=path, collection_name=collection, dimension=dimension)
-            if name == "qdrant":
-                from annal.backends.qdrant import QdrantBackend
-                url = backend_config.get("url", "http://localhost:6333")
-                hybrid = backend_config.get("hybrid", True)
-                return QdrantBackend(url=url, collection_name=collection, dimension=dimension, hybrid=hybrid)
-            raise ValueError(f"Unknown backend: {name}")
-
-        src = _make_backend(args.from_backend)
-        dst = _make_backend(args.to_backend)
+        src = _make_backend(args.from_backend, config, collection, embedder.dimension)
+        dst = _make_backend(args.to_backend, config, collection, embedder.dimension)
         count = migrate(src, dst, embedder)
         print(f"Migrated {count} documents from {args.from_backend} to {args.to_backend}")
+        return
+
+    if args.command == "export":
+        config = AnnalConfig.load(args.config)
+        _run_export(config, args.project)
+        return
+
+    if args.command == "import":
+        config = AnnalConfig.load(args.config)
+        _run_import(config, args.project, args.file)
         return
 
     # Default: serve (handles both `annal serve` and bare `annal` with old flags)
