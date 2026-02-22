@@ -82,7 +82,7 @@
 </div>
 
 <div hx-ext="sse" sse-connect="/events"
-     hx-trigger="sse:memory_stored, sse:memory_deleted, sse:index_complete"
+     hx-trigger="sse:memory_stored, sse:memory_updated, sse:memory_deleted, sse:index_complete"
      hx-get="/memories/table"
      hx-target="#memory-table"
      hx-include="[name]"

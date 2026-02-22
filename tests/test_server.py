@@ -801,3 +801,142 @@ async def test_dedup_checks_all_agent_memories(mcp):
         "tags": ["auth"],
     })
     assert "Skipped" in result or "similar memory already exists" in result
+
+
+@pytest.mark.asyncio
+async def test_retag_memory_add_tags(mcp):
+    """retag_memory should add tags and return the final list."""
+    store_result = await _call(mcp, "store_memory", {
+        "project": "test",
+        "content": "Retag test memory for adding",
+        "tags": ["auth"],
+    })
+    mem_id = store_result.split("Stored memory ")[-1].strip()
+
+    result = await _call(mcp, "retag_memory", {
+        "project": "test",
+        "memory_id": mem_id,
+        "add_tags": ["decision", "jwt"],
+    })
+    assert "Retagged" in result
+    assert "auth" in result
+    assert "decision" in result
+    assert "jwt" in result
+
+    # Verify via expand
+    expanded = await _call(mcp, "expand_memories", {
+        "project": "test", "memory_ids": [mem_id],
+    })
+    assert "decision" in expanded
+    assert "jwt" in expanded
+
+
+@pytest.mark.asyncio
+async def test_retag_memory_remove_tags(mcp):
+    """retag_memory should remove specified tags."""
+    store_result = await _call(mcp, "store_memory", {
+        "project": "test",
+        "content": "Retag test memory for removing",
+        "tags": ["billing", "auth", "old-tag"],
+    })
+    mem_id = store_result.split("Stored memory ")[-1].strip()
+
+    result = await _call(mcp, "retag_memory", {
+        "project": "test",
+        "memory_id": mem_id,
+        "remove_tags": ["old-tag"],
+    })
+    assert "Retagged" in result
+    assert "old-tag" not in result
+
+
+@pytest.mark.asyncio
+async def test_retag_memory_set_tags(mcp):
+    """retag_memory with set_tags replaces all tags."""
+    store_result = await _call(mcp, "store_memory", {
+        "project": "test",
+        "content": "Retag test memory for set replacement",
+        "tags": ["a", "b", "c"],
+    })
+    mem_id = store_result.split("Stored memory ")[-1].strip()
+
+    result = await _call(mcp, "retag_memory", {
+        "project": "test",
+        "memory_id": mem_id,
+        "set_tags": ["x", "y"],
+    })
+    assert "Retagged" in result
+    assert "[x, y]" in result
+
+
+@pytest.mark.asyncio
+async def test_retag_memory_accepts_string_tags(mcp):
+    """retag_memory should accept bare strings for tag params."""
+    store_result = await _call(mcp, "store_memory", {
+        "project": "test",
+        "content": "Retag string input test",
+        "tags": ["base"],
+    })
+    mem_id = store_result.split("Stored memory ")[-1].strip()
+
+    result = await _call(mcp, "retag_memory", {
+        "project": "test",
+        "memory_id": mem_id,
+        "add_tags": "new-tag",
+    })
+    assert "Retagged" in result
+    assert "new-tag" in result
+
+
+@pytest.mark.asyncio
+async def test_retag_memory_validation_no_ops(mcp):
+    """retag_memory with no tag params returns an error."""
+    result = await _call(mcp, "retag_memory", {
+        "project": "test",
+        "memory_id": "some-id",
+    })
+    assert "Error" in result
+    assert "at least one" in result
+
+
+@pytest.mark.asyncio
+async def test_retag_memory_validation_mixed(mcp):
+    """retag_memory with set_tags + add_tags returns an error."""
+    result = await _call(mcp, "retag_memory", {
+        "project": "test",
+        "memory_id": "some-id",
+        "set_tags": ["x"],
+        "add_tags": ["y"],
+    })
+    assert "Error" in result
+    assert "Cannot mix" in result
+
+
+@pytest.mark.asyncio
+async def test_retag_memory_not_found(mcp):
+    """retag_memory on nonexistent ID returns an error."""
+    result = await _call(mcp, "retag_memory", {
+        "project": "test",
+        "memory_id": "nonexistent-id-xyz",
+        "add_tags": ["x"],
+    })
+    assert "Error" in result
+    assert "not found" in result
+
+
+@pytest.mark.asyncio
+async def test_update_memory_emits_event(mcp):
+    """update_memory should not crash (event emission is fire-and-forget)."""
+    store_result = await _call(mcp, "store_memory", {
+        "project": "test",
+        "content": "Memory for update event test",
+        "tags": ["test"],
+    })
+    mem_id = store_result.split("Stored memory ")[-1].strip()
+
+    result = await _call(mcp, "update_memory", {
+        "project": "test",
+        "memory_id": mem_id,
+        "content": "Updated content for event test",
+    })
+    assert "Updated memory" in result

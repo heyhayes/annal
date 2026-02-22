@@ -132,6 +132,12 @@ These are set by the file indexer, not by agents:
 To search only agent-stored memories (excluding file-indexed content), filter
 by any memory type tag. To search only file-indexed content, use `indexed`.
 
+### Retagging memories
+
+Use `retag_memory` to fix or refine tags after storage without changing content.
+Supports `add_tags`, `remove_tags` (incremental), or `set_tags` (full replace).
+  retag_memory(project="myapp", memory_id="...", add_tags=["billing"], remove_tags=["misc"])
+
 ## Decision verification
 
 Before accepting, proposing, or implementing a design decision, search annal
@@ -449,7 +455,44 @@ def create_server(
             store.update(memory_id, content=content, tags=normalized_tags, source=source)
         except ValueError:
             return f"[{project}] Memory {memory_id} not found."
+        event_bus.push(Event(type="memory_updated", project=project, detail=memory_id))
         return f"[{project}] Updated memory {memory_id}"
+
+    @mcp.tool()
+    def retag_memory(
+        project: str,
+        memory_id: str,
+        add_tags: list[str] | str | None = None,
+        remove_tags: list[str] | str | None = None,
+        set_tags: list[str] | str | None = None,
+    ) -> str:
+        """Modify tags on an existing memory without changing its content.
+
+        Use add_tags/remove_tags for incremental edits, or set_tags to replace
+        all tags at once. Cannot mix set_tags with add/remove.
+
+        Args:
+            project: Project name the memory belongs to
+            memory_id: The ID of the memory to retag
+            add_tags: Tags to add (str or list)
+            remove_tags: Tags to remove (str or list)
+            set_tags: Replace all tags with these (str or list)
+        """
+        add = _normalize_tags(add_tags)
+        remove = _normalize_tags(remove_tags)
+        replace = _normalize_tags(set_tags)
+        store = pool.get_store(project)
+        try:
+            final = store.retag(
+                memory_id,
+                add_tags=add,
+                remove_tags=remove,
+                set_tags=replace,
+            )
+        except ValueError as e:
+            return f"[{project}] Error: {e}"
+        event_bus.push(Event(type="memory_updated", project=project, detail=memory_id))
+        return f"[{project}] Retagged memory {memory_id} → [{', '.join(final)}]"
 
     @mcp.tool()
     def list_topics(project: str) -> str:

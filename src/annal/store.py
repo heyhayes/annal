@@ -207,6 +207,50 @@ class MemoryStore:
         self._backend.update(mem_id, text=new_text, embedding=new_embedding, metadata=new_meta)
         self._invalidate_tag_cache()
 
+    def retag(
+        self,
+        mem_id: str,
+        add_tags: list[str] | None = None,
+        remove_tags: list[str] | None = None,
+        set_tags: list[str] | None = None,
+    ) -> list[str]:
+        """Modify tags on an existing memory. Returns the final tag list.
+
+        Exactly one mode: either set_tags (replace all), or add/remove (delta).
+        Raises ValueError if the memory doesn't exist or inputs are invalid.
+        """
+        if set_tags is not None and (add_tags or remove_tags):
+            raise ValueError("Cannot mix set_tags with add_tags/remove_tags")
+        if set_tags is None and not add_tags and not remove_tags:
+            raise ValueError("Provide at least one of add_tags, remove_tags, or set_tags")
+
+        existing = self._backend.get([mem_id])
+        if not existing:
+            raise ValueError(f"Memory {mem_id} not found")
+
+        old = existing[0]
+        current_tags: list[str] = old.metadata.get("tags", [])
+
+        if set_tags is not None:
+            final_tags = list(dict.fromkeys(set_tags))  # dedupe, preserve order
+        else:
+            tag_set = list(dict.fromkeys(current_tags))  # start from current, deduped
+            if add_tags:
+                for t in add_tags:
+                    if t not in tag_set:
+                        tag_set.append(t)
+            if remove_tags:
+                tag_set = [t for t in tag_set if t not in set(remove_tags)]
+            final_tags = tag_set
+
+        new_meta = dict(old.metadata)
+        new_meta["tags"] = final_tags
+        new_meta["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+        self._backend.update(mem_id, text=None, embedding=None, metadata=new_meta)
+        self._invalidate_tag_cache()
+        return final_tags
+
     def delete_many(self, ids: list[str]) -> None:
         """Delete multiple memories by ID in batches."""
         for i in range(0, len(ids), 5000):

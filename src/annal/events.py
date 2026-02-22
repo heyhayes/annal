@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class Event:
     """A dashboard event."""
-    type: str      # "memory_stored", "memory_deleted", "index_started", "index_complete", "index_failed"
+    type: str      # "memory_stored", "memory_updated", "memory_deleted", "index_started", "index_complete", "index_failed"
     project: str
     detail: str = ""
 

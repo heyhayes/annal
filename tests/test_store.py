@@ -416,6 +416,84 @@ def test_search_across_projects(tmp_data_dir):
     assert len(results_b) == 1
 
 
+def test_retag_add_tags(tmp_data_dir):
+    """retag with add_tags should append new tags."""
+    store = make_store(tmp_data_dir, "retag_add")
+    mem_id = store.store(content="Auth decision", tags=["auth"])
+
+    final = store.retag(mem_id, add_tags=["decision", "jwt"])
+    assert final == ["auth", "decision", "jwt"]
+
+    result = store.get_by_ids([mem_id])
+    assert result[0]["tags"] == ["auth", "decision", "jwt"]
+    assert result[0]["updated_at"] != ""
+
+
+def test_retag_remove_tags(tmp_data_dir):
+    """retag with remove_tags should remove specified tags."""
+    store = make_store(tmp_data_dir, "retag_remove")
+    mem_id = store.store(content="Billing auth decision", tags=["billing", "auth", "decision"])
+
+    final = store.retag(mem_id, remove_tags=["auth"])
+    assert final == ["billing", "decision"]
+
+
+def test_retag_add_and_remove(tmp_data_dir):
+    """retag with both add and remove in one call."""
+    store = make_store(tmp_data_dir, "retag_both")
+    mem_id = store.store(content="Some memory", tags=["old", "keep"])
+
+    final = store.retag(mem_id, add_tags=["new"], remove_tags=["old"])
+    assert final == ["keep", "new"]
+
+
+def test_retag_set_tags(tmp_data_dir):
+    """retag with set_tags should replace all tags."""
+    store = make_store(tmp_data_dir, "retag_set")
+    mem_id = store.store(content="Some memory", tags=["a", "b", "c"])
+
+    final = store.retag(mem_id, set_tags=["x", "y"])
+    assert final == ["x", "y"]
+
+    result = store.get_by_ids([mem_id])
+    assert result[0]["tags"] == ["x", "y"]
+
+
+def test_retag_set_mixed_with_add_raises(tmp_data_dir):
+    """Cannot mix set_tags with add_tags."""
+    store = make_store(tmp_data_dir, "retag_mix")
+    mem_id = store.store(content="Memory", tags=["a"])
+
+    with pytest.raises(ValueError, match="Cannot mix"):
+        store.retag(mem_id, set_tags=["x"], add_tags=["y"])
+
+
+def test_retag_no_ops_raises(tmp_data_dir):
+    """Must provide at least one tag operation."""
+    store = make_store(tmp_data_dir, "retag_noop")
+    mem_id = store.store(content="Memory", tags=["a"])
+
+    with pytest.raises(ValueError, match="at least one"):
+        store.retag(mem_id)
+
+
+def test_retag_nonexistent_raises(tmp_data_dir):
+    """retag on missing ID should raise ValueError."""
+    store = make_store(tmp_data_dir, "retag_missing")
+
+    with pytest.raises(ValueError, match="not found"):
+        store.retag("nonexistent-id", add_tags=["x"])
+
+
+def test_retag_deduplicates(tmp_data_dir):
+    """Adding a tag that already exists should not create duplicates."""
+    store = make_store(tmp_data_dir, "retag_dedup")
+    mem_id = store.store(content="Memory", tags=["auth", "decision"])
+
+    final = store.retag(mem_id, add_tags=["auth", "new"])
+    assert final == ["auth", "decision", "new"]
+
+
 def test_fuzzy_tag_matches_dbs_to_database(tmp_data_dir):
     """Lowered threshold (0.72) should match 'dbs' to 'database'."""
     store = make_store(tmp_data_dir, "fuzzy_threshold")

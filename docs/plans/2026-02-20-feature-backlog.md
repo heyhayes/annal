@@ -158,7 +158,7 @@ Compiled from the initial spike. Items marked with [field] are things to validat
 ## New tools
 
 - ~~`update_memory`~~ — shipped in spike 3
-- `add_tags` / `retag_memory` — modify tags on an existing memory after storage. If an agent realizes a set of memories should have had a `billing` tag, there's currently no recourse. Just a metadata update on the ChromaDB document.
+- ~~`add_tags` / `retag_memory`~~ — shipped: `retag_memory` tool with `add_tags`, `remove_tags`, `set_tags` modes. `memory_updated` event for dashboard live refresh.
 - ~~`index_status`~~ — shipped in spike 4
 - Source-scoped search — add an optional `source_prefix` filter to `search_memories` so agents can search within a specific file's chunks or only within agent memories. Useful when the agent knows the knowledge came from a specific document.
 - ~~Time window filter~~ — shipped in spike 5: `after`/`before` params on `search_memories`
