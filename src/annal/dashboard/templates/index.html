@@ -7,37 +7,51 @@
   <h1>Projects</h1>
 </div>
 
+<form class="cross-project-search" action="/memories" method="get">
+  <input type="hidden" name="projects" value="*">
+  <input type="text"
+         name="q"
+         class="cross-search-input"
+         placeholder="Search all projects...">
+</form>
+
 <div hx-ext="sse" sse-connect="/events" style="display:none"></div>
 
 {% if project_stats %}
-<div class="card-grid">
-  {% for p in project_stats %}
-  <a href="/memories?project={{ p.name }}" class="project-card" id="card-{{ p.name }}">
-    <div class="card-header">
-      <h2 class="card-title">{{ p.name }}</h2>
-      <span class="indexing-badge" id="indexing-{{ p.name }}" style="display:none">indexing…</span>
-      <span class="card-count">{{ p.total }}</span>
-    </div>
-    <div class="card-stats">
-      <div class="stat">
-        <span class="stat-value">{{ p.agent_memory }}</span>
-        <span class="stat-label">agent</span>
-      </div>
-      <div class="stat">
-        <span class="stat-value">{{ p.file_indexed }}</span>
-        <span class="stat-label">indexed</span>
-      </div>
-    </div>
-    {% if p.top_tags %}
-    <div class="card-tags">
-      {% for tag, count in p.top_tags %}
-      <span class="tag-pill">{{ tag }} <span class="tag-count">{{ count }}</span></span>
-      {% endfor %}
-    </div>
-    {% endif %}
-  </a>
-  {% endfor %}
-</div>
+<input type="text"
+       class="project-filter-input"
+       placeholder="Filter projects..."
+       oninput="filterProjects(this.value)">
+
+<table class="memory-table project-table">
+  <thead>
+    <tr>
+      <th>Project</th>
+      <th>Total</th>
+      <th>Agent</th>
+      <th>Indexed</th>
+      <th>Top Tags</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for p in project_stats %}
+    <tr class="memory-row project-row" data-project="{{ p.name }}">
+      <td>
+        <a href="/memories?project={{ p.name }}" class="project-link">{{ p.name }}</a>
+        <span class="indexing-badge" id="indexing-{{ p.name }}" style="display:none">indexing…</span>
+      </td>
+      <td class="num-cell">{{ p.total }}</td>
+      <td class="num-cell">{{ p.agent_memory }}</td>
+      <td class="num-cell">{{ p.file_indexed }}</td>
+      <td>
+        {% for tag, count in p.top_tags %}
+        <a href="/memories?project={{ p.name }}&tags={{ tag }}" class="tag-pill tag-clickable">{{ tag }} <span class="tag-count">{{ count }}</span></a>
+        {% endfor %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
 {% else %}
 <div class="empty-state">
   <div class="empty-icon">&gt;_</div>
@@ -47,6 +61,14 @@
 {% endif %}
 
 <script>
+function filterProjects(query) {
+  var q = query.toLowerCase();
+  document.querySelectorAll('.project-row').forEach(function(row) {
+    var name = row.dataset.project.toLowerCase();
+    row.style.display = name.includes(q) ? '' : 'none';
+  });
+}
+
 document.body.addEventListener('sse:index_started', function(e) {
   var project = e.detail.value.split('|')[0];
   var badge = document.getElementById('indexing-' + project);

@@ -46,6 +46,7 @@ def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
     def _parse_memory_params(request: Request) -> dict:
         """Extract common filter/pagination params from a request."""
         params = request.query_params
+        projects = params.get("projects", "")
         project = params.get("project", "")
         chunk_type = params.get("type", "")
         source_prefix = params.get("source", "")
@@ -55,6 +56,8 @@ def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
         q = params.get("q", "")
         return {
             "project": project,
+            "projects": projects,
+            "cross_project": projects == "*",
             "chunk_type": chunk_type or None,
             "source_prefix": source_prefix or None,
             "tags": tags or None,
@@ -92,6 +95,7 @@ def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
         return {
             "memories": memories,
             "project": project,
+            "cross_project": False,
             "page": page,
             "total_pages": total_pages,
             "total": total,
@@ -101,20 +105,54 @@ def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
             "q": params["q"],
         }
 
+    def _fetch_cross_project(pool: StorePool, params: dict) -> dict:
+        """Search across all projects, merge results by score."""
+        query = params["q"]
+        tags = params["tags"]
+        all_results = []
+        if query:
+            for name in sorted(config.projects):
+                store = pool.get_store(name)
+                results = store.search(query=query, limit=PAGE_SIZE, tags=tags)
+                for mem in results:
+                    mem["project"] = name
+                all_results.extend(results)
+            # Sort by distance (lower = more similar) if present, else keep order
+            all_results.sort(key=lambda m: m.get("distance", 1.0))
+            all_results = all_results[:PAGE_SIZE]
+        return {
+            "memories": all_results,
+            "project": "",
+            "cross_project": True,
+            "page": 1,
+            "total_pages": 1,
+            "total": len(all_results),
+            "chunk_type": "",
+            "source": "",
+            "tags": ",".join(tags) if tags else "",
+            "q": query,
+        }
+
     async def memories(request: Request) -> Response:
         """Full memories browse/search page."""
         params = _parse_memory_params(request)
-        if not params["project"]:
+        if params["cross_project"]:
+            ctx = _fetch_cross_project(pool, params)
+        elif params["project"]:
+            ctx = _fetch_memories(pool, params)
+        else:
             return HTMLResponse("Missing project parameter", status_code=400)
-        ctx = _fetch_memories(pool, params)
         return templates.TemplateResponse(request, "memories.html", ctx)
 
     async def memories_table(request: Request) -> Response:
         """HTMX partial: just the table body rows."""
         params = _parse_memory_params(request)
-        if not params["project"]:
+        if params["cross_project"]:
+            ctx = _fetch_cross_project(pool, params)
+        elif params["project"]:
+            ctx = _fetch_memories(pool, params)
+        else:
             return HTMLResponse("Missing project parameter", status_code=400)
-        ctx = _fetch_memories(pool, params)
         return templates.TemplateResponse(request, "_table.html", ctx)
 
     async def delete_memory(request: Request) -> Response:
@@ -156,28 +194,38 @@ def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
     async def search(request: Request) -> Response:
         """HTMX search: POST with form data, return table partial."""
         form = await request.form()
+        projects = form.get("projects", "")
         project = form.get("project", "")
         query = form.get("q", "")
-        if not project or not query:
+        cross = projects == "*"
+
+        if not cross and (not project or not query):
             return HTMLResponse("Missing project or query", status_code=400)
+        if not query:
+            return HTMLResponse("Missing query", status_code=400)
 
         tags_raw = form.get("tags", "")
         tags = [t.strip() for t in tags_raw.split(",") if t.strip()] if tags_raw else None
-        limit = int(form.get("limit", str(PAGE_SIZE)))
-        store = pool.get_store(project)
-        results = store.search(query=query, tags=tags, limit=limit)
 
-        ctx = {
-            "memories": results,
-            "project": project,
-            "page": 1,
-            "total_pages": 1,
-            "total": len(results),
-            "chunk_type": form.get("type", ""),
-            "source": form.get("source", ""),
-            "tags": tags_raw,
-            "q": query,
-        }
+        if cross:
+            params = {"q": query, "tags": tags}
+            ctx = _fetch_cross_project(pool, params)
+        else:
+            limit = int(form.get("limit", str(PAGE_SIZE)))
+            store = pool.get_store(project)
+            results = store.search(query=query, tags=tags, limit=limit)
+            ctx = {
+                "memories": results,
+                "project": project,
+                "cross_project": False,
+                "page": 1,
+                "total_pages": 1,
+                "total": len(results),
+                "chunk_type": form.get("type", ""),
+                "source": form.get("source", ""),
+                "tags": tags_raw,
+                "q": query,
+            }
         return templates.TemplateResponse(request, "_table.html", ctx)
 
     async def bulk_delete_filter(request: Request) -> Response:

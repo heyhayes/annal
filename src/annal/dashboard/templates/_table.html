@@ -3,6 +3,11 @@
   <td class="col-check">
     <input type="checkbox" class="row-check" value="{{ mem.id }}" onchange="toggleBulkBtn()">
   </td>
+  {% if cross_project %}
+  <td class="col-project">
+    <a href="/memories?project={{ mem.project }}" class="project-link">{{ mem.project }}</a>
+  </td>
+  {% endif %}
   <td class="col-content" onclick="toggleExpand(this)">
     <div class="content-snippet">{{ mem.content[:150] }}{% if mem.content|length > 150 %}…{% endif %}</div>
     {% if mem.content|length > 150 %}
@@ -14,7 +19,7 @@
   </td>
   <td class="col-tags">
     {% for tag in mem.tags %}
-    <span class="tag-pill">{{ tag }}</span>
+    <span class="tag-pill tag-clickable" onclick="filterByTag('{{ tag }}')">{{ tag }}</span>
     {% endfor %}
   </td>
   <td class="col-type">
@@ -25,7 +30,7 @@
   </td>
   <td class="col-actions">
     <button class="btn btn-icon btn-delete"
-            hx-delete="/memories/{{ mem.id }}?project={{ project }}"
+            hx-delete="/memories/{{ mem.id }}?project={{ mem.project if cross_project else project }}"
             hx-target="closest tr"
             hx-swap="outerHTML"
             hx-confirm="Delete this memory?"
@@ -36,7 +41,7 @@
 </tr>
 {% else %}
 <tr>
-  <td colspan="7" class="empty-table">No memories found.</td>
+  <td colspan="{{ 8 if cross_project else 7 }}" class="empty-table">No memories found.</td>
 </tr>
 {% endfor %}
 
