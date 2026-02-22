@@ -59,12 +59,19 @@ Store memories when you encounter information worth preserving across sessions:
 - Domain knowledge that took effort to discover
 
 ## When to search
-Search annal at these moments — prefer probe mode to keep context lean:
+Search annal at these moments — prefer summary mode for most searches:
 - Session start: load context for the current project and task area
 - Questions about prior work: "what did we decide about X?", "have we seen this before?"
 - Before proposing architectural changes: check for prior decisions in the same domain
 - When a bug feels familiar: search for prior root causes and fixes
 - Before starting a new feature: look for related specs, patterns, or preferences
+
+## Search modes
+- `mode="summary"` (recommended): returns first 200 chars of content with full metadata.
+  Enough to judge relevance without a follow-up call. Use this for most searches.
+- `mode="probe"`: compact one-line summaries with scores. Use when scanning large result
+  sets and context window is tight. Follow up with `expand_memories` for details.
+- `mode="full"`: complete content. Use when you already know you need the full text.
 
 ## Searching
 Use search_memories with natural language — it uses semantic similarity, not keyword
@@ -237,8 +244,9 @@ def create_server(
             query: Natural language search query
             tags: Optional tag filter — only return memories with at least one of these tags
             limit: Maximum number of results (default 5)
-            mode: "full" (default) returns complete content; "probe" returns compact
-                  summaries — use probe to scan relevance, then expand_memories for details
+            mode: "full" returns complete content; "summary" (recommended) returns first
+                  200 chars with full metadata — enough to judge relevance without expanding;
+                  "probe" returns compact one-line summaries for scanning large result sets
             min_score: Minimum similarity score to include (default 0.0, suppresses negative scores)
             after: Optional ISO 8601 date — only return memories created after this date
             before: Optional ISO 8601 date — only return memories created before this date
@@ -308,7 +316,7 @@ def create_server(
                 }
                 if is_cross_project:
                     entry["project"] = r["project"]
-                if mode == "probe":
+                if mode in ("probe", "summary"):
                     entry["content_preview"] = r["content"][:200]
                 else:
                     entry["content"] = r["content"]
@@ -339,6 +347,16 @@ def create_server(
                     f'{proj_label}[{r["score"]:.2f}] ({", ".join(r["tags"])}) "{snippet}"'
                     f"\n  Source: {source_label} | {date} | ID: {r['id']}"
                 )
+            elif mode == "summary":
+                content = r["content"]
+                preview = content[:200]
+                if len(content) > 200:
+                    preview += "…"
+                date = (r.get("updated_at") or r["created_at"] or "")[:10] or "unknown"
+                source_label = r["source"] or "session observation"
+                entry = f'{proj_label}[{r["score"]:.2f}] ({", ".join(r["tags"])}) {preview}'
+                entry += f"\n  Source: {source_label} | {date} | ID: {r['id']}"
+                lines.append(entry)
             else:
                 entry = f"{proj_label}[{r['score']:.2f}] ({', '.join(r['tags'])}) {r['content']}"
                 if r["source"]:

@@ -206,6 +206,12 @@ Priority order for reaching production grade:
 - Graceful backend failure — when Qdrant is unreachable, return a descriptive MCP error instead of surfacing a raw Python traceback. Optional retry with backoff for transient failures.
 - Auth (if multi-user) — bearer token or API key on the HTTP transport. Not needed for single-user localhost, but required before exposing on a network or sharing a Qdrant instance across a team.
 
+## Memory quality
+
+- Contradiction detection — when a `store_memory` call has high similarity to an existing memory, compare the two for semantic contradiction (not just duplication). Surface conflicts explicitly: "this memory may contradict memory X — pass `supersedes` if this replaces it." Closely tied to supersession — if supersession links exist, contradiction detection becomes: find high-similarity unsuperseded memories and flag potential conflicts. The hard part: "we use JWT" and "we use session cookies" are semantically similar but contradictory, while "we use JWT" and "the auth module is in src/auth/" are similar but complementary. Likely needs a lightweight LLM pass on high-similarity pairs to distinguish contradiction from reinforcement. Scope this as a narrow, triggered check (not a batch scan).
+- `store_batch` tool — accept multiple memories in a single call, embed in one batch, dedup-check efficiently. Reduces round-trip friction at end-of-session when agents want to dump 5-6 learnings. Lower cost of storing encourages agents to store more often rather than agonizing over whether each finding is "worth it." Straightforward to implement on top of `embed_batch()`.
+- Search-miss tracking — log queries that return zero or low-score results (below `min_score` threshold). Surface accumulated misses in dashboard or via `annal stats --gaps` as "knowledge gaps." These are demand signals for targeted enrichment: if three sessions search for "how does deployment work" and get nothing, that's a signal to investigate and store a targeted memory. Precursor to demand-driven enrichment without the noise of supply-driven doc scanning.
+
 ## Future considerations (not for next spike)
 
 - ~~pgvector migration path~~ — superseded by spike 8: VectorBackend protocol makes adding new backends straightforward. Qdrant already available as an alternative.

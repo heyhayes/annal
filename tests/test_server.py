@@ -530,6 +530,62 @@ async def test_search_json_probe_mode(mcp):
 
 
 @pytest.mark.asyncio
+async def test_search_summary_mode_text(mcp):
+    """mode='summary' returns truncated content with metadata in text output."""
+    long_content = "B" * 300 + " unique marker for summary"
+    short_content = "Short memory about auth"
+
+    await _call(mcp, "store_memory", {
+        "project": "test", "content": long_content, "tags": ["test"],
+    })
+    await _call(mcp, "store_memory", {
+        "project": "test", "content": short_content, "tags": ["auth"],
+    })
+
+    result = await _call(mcp, "search_memories", {
+        "project": "test", "query": "BBBB", "mode": "summary",
+    })
+    # Long content should be truncated with ellipsis
+    assert "B" * 200 in result
+    assert "…" in result
+    assert "Source:" in result
+    assert "ID:" in result
+
+    result2 = await _call(mcp, "search_memories", {
+        "project": "test", "query": "auth", "mode": "summary",
+    })
+    # Short content should appear in full without ellipsis truncation
+    assert "Short memory about auth" in result2
+
+
+@pytest.mark.asyncio
+async def test_search_summary_mode_json(mcp):
+    """mode='summary' + output='json' returns content_preview with full metadata."""
+    import json
+
+    long_content = "The authentication middleware validates JWT tokens on every request and checks expiration timestamps against server time. " * 3
+    await _call(mcp, "store_memory", {
+        "project": "test", "content": long_content, "tags": ["auth", "middleware"],
+    })
+
+    result = await _call(mcp, "search_memories", {
+        "project": "test", "query": "JWT authentication middleware", "mode": "summary", "output": "json",
+    })
+
+    data = json.loads(result)
+    assert data["meta"]["mode"] == "summary"
+    first = data["results"][0]
+    assert "content_preview" in first
+    assert len(first["content_preview"]) <= 200
+    assert "content" not in first
+    assert "tags" in first
+    assert "score" in first
+    assert "source" in first
+    assert "created_at" in first
+    assert "id" in first
+
+
+@pytest.mark.asyncio
 async def test_search_memories_json_empty(mcp):
     """search_memories with output='json' and no results returns correct JSON structure."""
     import json
