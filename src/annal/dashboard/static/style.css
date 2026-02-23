@@ -837,7 +837,8 @@ input[type="checkbox"] {
 }
 
 .feed-entry {
-  display: flex;
+  display: grid;
+  grid-template-columns: 120px auto 1fr auto;
   align-items: baseline;
   gap: 0.5rem;
   padding: 0.35rem 0;
@@ -851,9 +852,18 @@ input[type="checkbox"] {
   to { opacity: 1; transform: translateY(0); }
 }
 
-.feed-project {
+a.feed-project {
   color: var(--text-bright);
   font-weight: 500;
+  text-decoration: none;
+  transition: color 0.15s;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+a.feed-project:hover {
+  color: var(--accent);
 }
 
 .feed-dot {
@@ -895,11 +905,19 @@ input[type="checkbox"] {
 }
 
 .feed-detail {
+  font-family: var(--font-ui);
   color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 500px;
+}
+
+.feed-time {
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  white-space: nowrap;
+  text-align: right;
 }
 
 .feed-empty {

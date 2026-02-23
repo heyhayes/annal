@@ -74,13 +74,14 @@
   <div class="feed-container" id="feed-container">
     {% for event in recent_events %}
     <div class="feed-entry">
-      <span class="feed-project">{{ event.project }}</span>
+      <a href="/memories?project={{ event.project }}" class="feed-project">{{ event.project }}</a>
       <span class="feed-dot">&middot;</span>
       <span class="feed-action feed-action--{{ event.type }}">{{ event.type.replace('_', ' ') }}</span>
       {% if event.detail %}
       <span class="feed-dot">&middot;</span>
       <span class="feed-detail">{{ event.detail[:80] }}</span>
       {% endif %}
+      <span class="feed-time" data-ts="{{ event.created_at }}"></span>
     </div>
     {% endfor %}
     {% if not recent_events %}
@@ -149,6 +150,34 @@ function commandPalette() {
   };
 }
 
+function timeAgo(iso) {
+  var now = Date.now();
+  var then = new Date(iso).getTime();
+  var seconds = Math.floor((now - then) / 1000);
+  if (seconds < 5) return 'now';
+  if (seconds < 60) return seconds + 's ago';
+  var minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return minutes + 'm ago';
+  var hours = Math.floor(minutes / 60);
+  if (hours < 24) return hours + 'h ago';
+  var days = Math.floor(hours / 24);
+  return days + 'd ago';
+}
+
+// Refresh all visible timestamps every 30s
+setInterval(function() {
+  document.querySelectorAll('.feed-time[data-ts]').forEach(function(el) {
+    el.textContent = timeAgo(el.dataset.ts);
+  });
+}, 30000);
+
+// Initial render of server-side timestamps
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('.feed-time[data-ts]').forEach(function(el) {
+    el.textContent = timeAgo(el.dataset.ts);
+  });
+});
+
 // SSE activity feed updates
 document.body.addEventListener('sse:memory_stored', function(e) {
   prependFeedEntry(e.detail.value, 'memory stored');
@@ -172,21 +201,22 @@ function prependFeedEntry(value, action) {
   var parts = value.split('|');
   var project = parts[0] || '';
   var detail = parts[1] || '';
+  var timestamp = parts[2] || new Date().toISOString();
   var eventType = action.replace(/ /g, '_');
   var container = document.getElementById('feed-container');
   if (!container) return;
 
-  // Remove "no recent activity" message if present
   var empty = container.querySelector('.feed-empty');
   if (empty) empty.remove();
 
   var entry = document.createElement('div');
   entry.className = 'feed-entry';
 
-  var projSpan = document.createElement('span');
-  projSpan.className = 'feed-project';
-  projSpan.textContent = project;
-  entry.appendChild(projSpan);
+  var projLink = document.createElement('a');
+  projLink.className = 'feed-project';
+  projLink.href = '/memories?project=' + encodeURIComponent(project);
+  projLink.textContent = project;
+  entry.appendChild(projLink);
 
   var dot1 = document.createElement('span');
   dot1.className = 'feed-dot';
@@ -210,9 +240,14 @@ function prependFeedEntry(value, action) {
     entry.appendChild(detailSpan);
   }
 
+  var timeSpan = document.createElement('span');
+  timeSpan.className = 'feed-time';
+  timeSpan.dataset.ts = timestamp;
+  timeSpan.textContent = timeAgo(timestamp);
+  entry.appendChild(timeSpan);
+
   container.insertBefore(entry, container.firstChild);
 
-  // Cap visible entries
   while (container.children.length > 20) {
     container.removeChild(container.lastChild);
   }
