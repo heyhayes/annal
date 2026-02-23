@@ -81,6 +81,8 @@ Search annal at these moments — prefer summary mode for most searches:
 Use search_memories with natural language — it uses semantic similarity, not keyword
 matching. Use mode="probe" to scan results cheaply, then expand_memories for details.
 Filter by tags to narrow results when the memory store grows large.
+Filter by source with `source="file:/path/to/doc"` to search within a specific file's chunks,
+or `source="session"` to search only session observations.
 
 ## Temporal filtering
 Scope searches by date using `after` and `before` (ISO 8601 dates):
@@ -343,6 +345,7 @@ def create_server(
         output: str = "text",
         projects: list[str] | str | None = None,
         include_superseded: bool = False,
+        source: str | None = None,
     ) -> str:
         """Search project memories using natural language.
 
@@ -363,6 +366,8 @@ def create_server(
                       a project field. When omitted, searches only the primary project.
             include_superseded: Include memories that have been replaced by newer versions
                                 (default False — superseded memories are hidden)
+            source: Optional source prefix filter — only return memories whose source starts
+                    with this string. Use "file:/path" for file chunks, "session" for observations.
         """
 
         tags = _normalize_tags(tags)
@@ -385,7 +390,7 @@ def create_server(
         for proj_name in search_projects:
             store = pool.get_store(proj_name)
             try:
-                proj_results = store.search(query=query, tags=tags, limit=limit, after=after, before=before, include_superseded=include_superseded)
+                proj_results = store.search(query=query, tags=tags, limit=limit, after=after, before=before, include_superseded=include_superseded, source_prefix=source)
             except ValueError as e:
                 return f"[{project}] Error: {e}"
             for r in proj_results:
@@ -419,11 +424,18 @@ def create_server(
                     "tags": r["tags"],
                     "score": round(r["score"], 4),
                     "source": r["source"],
+                    "chunk_type": r["chunk_type"],
                     "created_at": r["created_at"],
                     "updated_at": r.get("updated_at", ""),
                 }
                 if is_cross_project:
                     entry["project"] = r["project"]
+                if r.get("superseded_by"):
+                    entry["superseded_by"] = r["superseded_by"]
+                if "hit_count" in r:
+                    entry["hit_count"] = r["hit_count"]
+                if "last_accessed_at" in r:
+                    entry["last_accessed_at"] = r["last_accessed_at"]
                 if mode in ("probe", "summary"):
                     entry["content_preview"] = r["content"][:200]
                 else:
@@ -438,10 +450,20 @@ def create_server(
             }
             if is_cross_project:
                 meta["projects_searched"] = search_projects
+
+            # Group results when both types are present
+            has_agent = any(e["chunk_type"] == "agent-memory" for e in json_results)
+            has_file = any(e["chunk_type"] == "file-indexed" for e in json_results)
+            if has_agent and has_file:
+                meta["grouped"] = True
+                return json.dumps({
+                    "agent_memories": [e for e in json_results if e["chunk_type"] == "agent-memory"],
+                    "file_indexed": [e for e in json_results if e["chunk_type"] == "file-indexed"],
+                    "meta": meta,
+                })
             return json.dumps({"results": json_results, "meta": meta})
 
-        lines = []
-        for r in results:
+        def _format_text_result(r: dict) -> str:
             proj_label = f"({r['project']}) " if is_cross_project else ""
             if mode == "probe":
                 content = r["content"]
@@ -451,7 +473,7 @@ def create_server(
                     snippet += "…"
                 date = (r.get("updated_at") or r["created_at"] or "")[:10] or "unknown"
                 source_label = r["source"] or "session observation"
-                lines.append(
+                return (
                     f'{proj_label}[{r["score"]:.2f}] ({", ".join(r["tags"])}) "{snippet}"'
                     f"\n  Source: {source_label} | {date} | ID: {r['id']}"
                 )
@@ -464,16 +486,35 @@ def create_server(
                 source_label = r["source"] or "session observation"
                 entry = f'{proj_label}[{r["score"]:.2f}] ({", ".join(r["tags"])}) {preview}'
                 entry += f"\n  Source: {source_label} | {date} | ID: {r['id']}"
-                lines.append(entry)
+                return entry
             else:
                 entry = f"{proj_label}[{r['score']:.2f}] ({', '.join(r['tags'])}) {r['content']}"
                 if r["source"]:
                     entry += f"\n  Source: {r['source']}"
                 if r.get("updated_at"):
                     entry += f"\n  Updated: {r['updated_at']}"
+                if r.get("superseded_by"):
+                    entry += f"\n  Superseded by: {r['superseded_by']}"
                 entry += f"\n  ID: {r['id']}"
-                lines.append(entry)
-        return f"[{project}] {len(results)} results:\n\n" + "\n\n".join(lines)
+                return entry
+
+        # Group results when both types are present
+        has_agent = any(r["chunk_type"] == "agent-memory" for r in results)
+        has_file = any(r["chunk_type"] == "file-indexed" for r in results)
+        header = f"[{project}] {len(results)} results:\n"
+
+        if has_agent and has_file:
+            agent_results = [r for r in results if r["chunk_type"] == "agent-memory"]
+            file_results = [r for r in results if r["chunk_type"] == "file-indexed"]
+            sections = []
+            sections.append(f"\n── Agent memories ({len(agent_results)}) ──\n")
+            sections.append("\n\n".join(_format_text_result(r) for r in agent_results))
+            sections.append(f"\n\n── File-indexed ({len(file_results)}) ──\n")
+            sections.append("\n\n".join(_format_text_result(r) for r in file_results))
+            return header + "\n".join(sections)
+
+        lines = [_format_text_result(r) for r in results]
+        return header + "\n" + "\n\n".join(lines)
 
     @mcp.tool()
     def expand_memories(project: str, memory_ids: list[str], output: str = "text") -> str:
@@ -497,14 +538,21 @@ def create_server(
         if output == "json":
             json_results = []
             for r in results:
-                json_results.append({
+                jr = {
                     "id": r["id"],
                     "content": r["content"],
                     "tags": r["tags"],
                     "source": r["source"],
                     "created_at": r["created_at"],
                     "updated_at": r.get("updated_at", ""),
-                })
+                }
+                if r.get("superseded_by"):
+                    jr["superseded_by"] = r["superseded_by"]
+                if "hit_count" in r:
+                    jr["hit_count"] = r["hit_count"]
+                if "last_accessed_at" in r:
+                    jr["last_accessed_at"] = r["last_accessed_at"]
+                json_results.append(jr)
             return json.dumps({"results": json_results})
 
         lines = []
@@ -514,6 +562,8 @@ def create_server(
                 entry += f"\n  Source: {r['source']}"
             if r.get("updated_at"):
                 entry += f"\n  Updated: {r['updated_at']}"
+            if r.get("superseded_by"):
+                entry += f"\n  Superseded by: {r['superseded_by']}"
             entry += f"\n  ID: {r['id']}"
             lines.append(entry)
         return f"[{project}] {len(results)} memories:\n\n" + "\n\n".join(lines)
@@ -726,6 +776,10 @@ def create_server(
             lines.append(f"  Last reconcile: {last['timestamp']} ({last['file_count']} files)")
         else:
             lines.append("  Last reconcile: never")
+        if stats.get("stale_count"):
+            lines.append(f"  Stale memories (>60d): {stats['stale_count']}")
+        if stats.get("never_accessed_count"):
+            lines.append(f"  Never accessed: {stats['never_accessed_count']}")
         return "\n".join(lines)
 
     return mcp, pool

@@ -6,7 +6,7 @@ import re
 import threading
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from annal.backend import Embedder, VectorBackend, VectorResult
 
@@ -278,6 +278,7 @@ class MemoryStore:
         after: str | None = None,
         before: str | None = None,
         include_superseded: bool = False,
+        source_prefix: str | None = None,
     ) -> list[dict]:
         if after:
             normalized = _normalize_date_bound(after, end_of_day=False)
@@ -294,13 +295,24 @@ class MemoryStore:
             return []
 
         embedding = self._embedder.embed(query)
-        where = self._build_where(tags=tags, after=after, before=before, include_superseded=include_superseded)
+        where = self._build_where(tags=tags, after=after, before=before, include_superseded=include_superseded, source_prefix=source_prefix)
 
         # Backends handle their own overfetch for post-filtering
         results = self._backend.query(embedding, limit=limit, where=where, query_text=query)
 
         memories = []
+        now = datetime.now(timezone.utc).isoformat()
         for r in results:
+            # Hit tracking for agent-memory results
+            if r.metadata.get("chunk_type") == "agent-memory":
+                hit_count = int(r.metadata.get("hit_count", 0)) + 1
+                r.metadata["hit_count"] = hit_count
+                r.metadata["last_accessed_at"] = now
+                try:
+                    self._backend.update(r.id, text=None, embedding=None, metadata=dict(r.metadata))
+                except Exception:
+                    pass  # best-effort telemetry
+
             distance = r.distance if r.distance is not None else 0.0
             mem = self._format_result(r)
             mem["score"] = 1.0 - distance
@@ -314,6 +326,16 @@ class MemoryStore:
         if not ids:
             return []
         results = self._backend.get(ids)
+        now = datetime.now(timezone.utc).isoformat()
+        for r in results:
+            if r.metadata.get("chunk_type") == "agent-memory":
+                hit_count = int(r.metadata.get("hit_count", 0)) + 1
+                r.metadata["hit_count"] = hit_count
+                r.metadata["last_accessed_at"] = now
+                try:
+                    self._backend.update(r.id, text=None, embedding=None, metadata=dict(r.metadata))
+                except Exception:
+                    pass  # best-effort telemetry
         return [self._format_result(r) for r in results]
 
     def delete(self, mem_id: str) -> None:
@@ -470,10 +492,14 @@ class MemoryStore:
         return [self._format_result(r) for r in results], total
 
     def stats(self, include_superseded: bool = False) -> dict:
-        """Return collection statistics: total count, type breakdown, tag distribution."""
+        """Return collection statistics: total count, type breakdown, tag distribution, stale counts."""
         by_type: dict[str, int] = {}
         by_tag: dict[str, int] = {}
         total = 0
+        stale_count = 0
+        never_accessed_count = 0
+        stale_cutoff = (datetime.now(timezone.utc) - timedelta(days=60)).isoformat()
+
         for _, meta in self._iter_metadata():
             if not include_superseded and meta.get("superseded_by"):
                 continue
@@ -482,7 +508,21 @@ class MemoryStore:
             by_type[chunk_type] = by_type.get(chunk_type, 0) + 1
             for tag in meta.get("tags", []):
                 by_tag[tag] = by_tag.get(tag, 0) + 1
-        return {"total": total, "by_type": by_type, "by_tag": by_tag}
+
+            # Stale detection for agent memories only
+            if chunk_type == "agent-memory":
+                last_accessed = meta.get("last_accessed_at")
+                if last_accessed is None:
+                    never_accessed_count += 1
+                elif last_accessed < stale_cutoff:
+                    stale_count += 1
+
+        result = {"total": total, "by_type": by_type, "by_tag": by_tag}
+        if stale_count > 0:
+            result["stale_count"] = stale_count
+        if never_accessed_count > 0:
+            result["never_accessed_count"] = never_accessed_count
+        return result
 
     def count(self) -> int:
         return self._backend.count()
@@ -501,4 +541,8 @@ class MemoryStore:
         }
         if r.metadata.get("superseded_by"):
             result["superseded_by"] = r.metadata["superseded_by"]
+        if "hit_count" in r.metadata:
+            result["hit_count"] = int(r.metadata["hit_count"])
+        if "last_accessed_at" in r.metadata:
+            result["last_accessed_at"] = r.metadata["last_accessed_at"]
         return result
