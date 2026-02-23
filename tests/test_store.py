@@ -818,6 +818,7 @@ def test_stats_includes_stale_counts(tmp_data_dir):
     assert stats["never_accessed_count"] == 1
 
 
+
 # ── Spike 14: Stale memory management ───────────────────────────────
 
 
