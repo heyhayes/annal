@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+
+{% block title %}Annal{% endblock %}
+
+{% block content %}
+<!-- Zone 1: Command Palette -->
+<div class="command-palette" x-data="commandPalette()">
+  <div class="palette-input-wrapper">
+    <span class="palette-prompt">&gt;_</span>
+    <input type="text"
+           class="palette-input"
+           placeholder="search memories, jump to project..."
+           x-model="query"
+           @input="onInput()"
+           @keydown.arrow-down.prevent="moveDown()"
+           @keydown.arrow-up.prevent="moveUp()"
+           @keydown.enter.prevent="select()"
+           @keydown.escape="close()"
+           @focus="open = query.length > 0">
+  </div>
+  <div class="palette-results" x-show="open" x-cloak>
+    <template x-for="(item, index) in filtered" :key="item.name || item.type">
+      <a :href="item.url"
+         class="palette-result"
+         :class="{ 'palette-result--active': index === activeIndex }"
+         @mouseenter="activeIndex = index">
+        <span class="palette-result-name" x-text="item.label"></span>
+        <span class="palette-result-meta" x-text="item.meta"></span>
+      </a>
+    </template>
+    <div class="palette-result palette-result--search"
+         :class="{ 'palette-result--active': activeIndex === filtered.length }"
+         @mouseenter="activeIndex = filtered.length"
+         @click="searchAll()"
+         x-show="query.length > 0">
+      <span class="palette-result-name">Search all projects for '<span x-text="query"></span>'</span>
+    </div>
+  </div>
+</div>
+
+<!-- Zone 2: Stats Ribbon -->
+<div class="stats-ribbon">
+  <div class="stat">
+    <span class="stat-number">{{ total_memories }}</span>
+    <span class="stat-label">memories</span>
+  </div>
+  <div class="stat-divider"></div>
+  <div class="stat">
+    <span class="stat-number">{{ total_projects }}</span>
+    <span class="stat-label">projects</span>
+  </div>
+  <div class="stat-divider"></div>
+  <div class="stat">
+    <span class="stat-number">{{ total_agent }}</span>
+    <span class="stat-label">agent</span>
+  </div>
+  <div class="stat-divider"></div>
+  <div class="stat{% if total_stale > 0 %} stat--warning{% endif %}">
+    <span class="stat-number">{{ total_stale }}</span>
+    <span class="stat-label">stale</span>
+  </div>
+  <div class="stat-divider"></div>
+  <div class="stat">
+    <span class="stat-status{% if indexing %} stat-status--active{% endif %}">
+      {% if indexing %}indexing…{% else %}idle{% endif %}
+    </span>
+    <span class="stat-label">status</span>
+  </div>
+</div>
+
+<!-- Zone 3: Activity Feed -->
+<div class="activity-feed" hx-ext="sse" sse-connect="/events">
+  <h2 class="feed-title">Activity</h2>
+  <div class="feed-container" id="feed-container">
+    {% for event in recent_events %}
+    <div class="feed-entry">
+      <span class="feed-project">{{ event.project }}</span>
+      <span class="feed-dot">&middot;</span>
+      <span class="feed-action feed-action--{{ event.type }}">{{ event.type.replace('_', ' ') }}</span>
+      {% if event.detail %}
+      <span class="feed-dot">&middot;</span>
+      <span class="feed-detail">{{ event.detail[:80] }}</span>
+      {% endif %}
+    </div>
+    {% endfor %}
+    {% if not recent_events %}
+    <div class="feed-empty">No recent activity. Memories will appear here as agents store and search.</div>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+function commandPalette() {
+  return {
+    query: '',
+    open: false,
+    activeIndex: 0,
+    projects: [],
+
+    async init() {
+      const resp = await fetch('/api/projects');
+      this.projects = await resp.json();
+    },
+
+    get filtered() {
+      if (!this.query) return [];
+      const q = this.query.toLowerCase();
+      return this.projects
+        .filter(p => p.name.toLowerCase().includes(q))
+        .slice(0, 7)
+        .map(p => ({
+          label: p.name,
+          meta: p.total + ' memories',
+          url: '/memories?project=' + p.name,
+        }));
+    },
+
+    onInput() {
+      this.open = this.query.length > 0;
+      this.activeIndex = 0;
+    },
+
+    moveDown() {
+      const max = this.filtered.length; // +1 for search action
+      if (this.activeIndex < max) this.activeIndex++;
+    },
+
+    moveUp() {
+      if (this.activeIndex > 0) this.activeIndex--;
+    },
+
+    select() {
+      if (this.activeIndex < this.filtered.length) {
+        window.location.href = this.filtered[this.activeIndex].url;
+      } else {
+        this.searchAll();
+      }
+    },
+
+    searchAll() {
+      if (this.query) {
+        window.location.href = '/memories?projects=*&q=' + encodeURIComponent(this.query);
+      }
+    },
+
+    close() {
+      this.open = false;
+    }
+  };
+}
+</script>
+{% endblock %}

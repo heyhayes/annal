@@ -381,3 +381,20 @@ def test_projects_page(dashboard_client):
     html = response.text
     assert "testproj" in html
     assert "3" in html  # total memories
+
+
+def test_dashboard_landing(dashboard_client):
+    """GET / returns the dashboard page with stats and activity feed."""
+    response = dashboard_client.get("/")
+    assert response.status_code == 200
+    html = response.text
+    # Stats ribbon should show aggregate numbers
+    assert "3" in html  # total memories
+    # Command palette input should be present
+    assert "search memories" in html.lower() or "jump to project" in html.lower()
+
+
+def test_dashboard_empty(empty_dashboard_client):
+    """GET / with no projects shows empty-friendly dashboard."""
+    response = empty_dashboard_client.get("/")
+    assert response.status_code == 200

@@ -41,6 +41,37 @@ def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
     """Create dashboard route list with access to the store pool and config."""
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
+    async def dashboard(request: Request) -> Response:
+        """System dashboard landing page."""
+        total_memories = 0
+        total_agent = 0
+        total_stale = 0
+        non_empty_projects = 0
+
+        for name in sorted(config.projects):
+            store = pool.get_store(name)
+            stats = store.stats()
+            if stats["total"] == 0:
+                continue
+            non_empty_projects += 1
+            total_memories += stats["total"]
+            total_agent += stats["by_type"].get("agent-memory", 0)
+            total_stale += stats.get("stale_count", 0) + stats.get("never_accessed_count", 0)
+
+        # Check if any project is currently indexing
+        indexing = any(pool.is_indexing(name) for name in config.projects)
+
+        recent_events = event_bus.recent(limit=20)
+
+        return templates.TemplateResponse(request, "dashboard.html", {
+            "total_memories": total_memories,
+            "total_projects": non_empty_projects,
+            "total_agent": total_agent,
+            "total_stale": total_stale,
+            "indexing": indexing,
+            "recent_events": recent_events,
+        })
+
     async def projects_page(request: Request) -> Response:
         """Project overview with stats cards."""
         project_stats = []
@@ -370,6 +401,7 @@ def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
         })
 
     return [
+        Route("/", dashboard),
         Route("/projects", projects_page),
         Route("/api/projects", api_projects),
         Route("/memories", memories),
