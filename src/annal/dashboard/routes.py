@@ -96,12 +96,24 @@ def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
         if params.get("stale") == "1" and not params["q"]:
             # Stale filter: get all stale IDs, paginate manually
             stale_result = store.find_stale()
+            stale_id_set = set(stale_result["stale_ids"])
+            never_id_set = set(stale_result["never_accessed_ids"])
             all_ids = stale_result["stale_ids"] + stale_result["never_accessed_ids"]
             total = len(all_ids)
             total_pages = max(1, math.ceil(total / PAGE_SIZE))
             page_ids = all_ids[offset:offset + PAGE_SIZE]
-            memories = store.get_by_ids(page_ids) if page_ids else []
-            _annotate_stale(memories)
+            memories = store.get_by_ids(page_ids, track_hits=False) if page_ids else []
+            # Annotate from find_stale result directly — get_by_ids updates
+            # last_accessed_at as a side effect, so _annotate_stale would
+            # see them as freshly accessed and miss them.
+            for mem in memories:
+                if mem["id"] in never_id_set:
+                    mem["stale"] = True
+                    mem.pop("last_accessed_at", None)
+                elif mem["id"] in stale_id_set:
+                    mem["stale"] = True
+                else:
+                    mem["stale"] = False
         elif params["q"]:
             # Search mode: semantic search, then apply filters client-side
             results = store.search(

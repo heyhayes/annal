@@ -321,21 +321,22 @@ class MemoryStore:
 
         return memories[:limit]
 
-    def get_by_ids(self, ids: list[str]) -> list[dict]:
+    def get_by_ids(self, ids: list[str], track_hits: bool = True) -> list[dict]:
         """Retrieve full memory records by their IDs."""
         if not ids:
             return []
         results = self._backend.get(ids)
-        now = datetime.now(timezone.utc).isoformat()
-        for r in results:
-            if r.metadata.get("chunk_type") == "agent-memory":
-                hit_count = int(r.metadata.get("hit_count", 0)) + 1
-                r.metadata["hit_count"] = hit_count
-                r.metadata["last_accessed_at"] = now
-                try:
-                    self._backend.update(r.id, text=None, embedding=None, metadata=dict(r.metadata))
-                except Exception:
-                    pass  # best-effort telemetry
+        if track_hits:
+            now = datetime.now(timezone.utc).isoformat()
+            for r in results:
+                if r.metadata.get("chunk_type") == "agent-memory":
+                    hit_count = int(r.metadata.get("hit_count", 0)) + 1
+                    r.metadata["hit_count"] = hit_count
+                    r.metadata["last_accessed_at"] = now
+                    try:
+                        self._backend.update(r.id, text=None, embedding=None, metadata=dict(r.metadata))
+                    except Exception:
+                        pass  # best-effort telemetry
         return [self._format_result(r) for r in results]
 
     def delete(self, mem_id: str) -> None:
