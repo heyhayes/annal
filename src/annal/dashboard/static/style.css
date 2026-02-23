@@ -928,3 +928,100 @@ a.feed-project:hover {
   padding: 2rem 0;
   text-align: center;
 }
+
+/* ── Stats Ribbon — interactive ── */
+
+.stats-ribbon-container {
+  margin-bottom: 2.5rem;
+}
+
+.stats-ribbon-container .stats-ribbon {
+  margin-bottom: 0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 1.25rem 1rem;
+}
+
+.stat--clickable {
+  cursor: pointer;
+  transition: transform 0.1s;
+}
+
+.stat--clickable:hover .stat-number {
+  transform: scale(1.08);
+}
+
+.stat--clickable:hover .stat-label {
+  color: var(--text-secondary);
+}
+
+.stat-number {
+  transition: transform 0.1s;
+  display: inline-block;
+}
+
+.status-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--type-agent);
+  margin-right: 0.3rem;
+  vertical-align: middle;
+}
+
+.status-dot--active {
+  background: var(--accent);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* Breakdown panel — grid-template-rows transition (no max-height jank) */
+
+.stat-breakdown-wrapper {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.2s ease;
+}
+
+.stat-breakdown-wrapper > .stat-breakdown {
+  overflow: hidden;
+}
+
+.stat-breakdown--open {
+  grid-template-rows: 1fr;
+}
+
+.stat-breakdown {
+  padding: 0;
+}
+
+.stat-breakdown--open .stat-breakdown {
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--border);
+}
+
+.breakdown-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.3rem 1rem;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  text-decoration: none;
+  color: var(--text-primary);
+  border-radius: var(--radius-sm);
+  transition: background 0.1s, color 0.1s;
+}
+
+.breakdown-row:hover {
+  background: var(--bg-hover);
+  color: var(--accent);
+}
+
+.breakdown-name {
+  font-weight: 500;
+}
+
+.breakdown-count {
+  color: var(--text-muted);
+}

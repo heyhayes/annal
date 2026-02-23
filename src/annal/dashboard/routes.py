@@ -369,6 +369,7 @@ def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
                 "total": stats["total"],
                 "agent_memory": stats["by_type"].get("agent-memory", 0),
                 "file_indexed": stats["by_type"].get("file-indexed", 0),
+                "stale": stats.get("stale_count", 0) + stats.get("never_accessed_count", 0),
             })
         return JSONResponse(projects)
 

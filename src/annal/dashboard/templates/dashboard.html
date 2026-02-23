@@ -39,32 +39,47 @@
 </div>
 
 <!-- Zone 2: Stats Ribbon -->
-<div class="stats-ribbon">
-  <div class="stat">
-    <span class="stat-number">{{ total_memories }}</span>
-    <span class="stat-label">memories</span>
+<div class="stats-ribbon-container" x-data="statsBreakdown()">
+  <div class="stats-ribbon">
+    <div class="stat stat--clickable" @click="toggle('total')">
+      <span class="stat-number">{{ total_memories }}</span>
+      <span class="stat-label">memories</span>
+    </div>
+    <div class="stat-divider"></div>
+    <div class="stat stat--clickable" @click="toggle('projects')">
+      <span class="stat-number">{{ total_projects }}</span>
+      <span class="stat-label">projects</span>
+    </div>
+    <div class="stat-divider"></div>
+    <div class="stat stat--clickable" @click="toggle('agent')">
+      <span class="stat-number">{{ total_agent }}</span>
+      <span class="stat-label">agent</span>
+    </div>
+    <div class="stat-divider"></div>
+    <div class="stat stat--clickable{% if total_stale > 0 %} stat--warning{% endif %}" @click="toggle('stale')">
+      <span class="stat-number">{{ total_stale }}</span>
+      <span class="stat-label">stale</span>
+    </div>
+    <div class="stat-divider"></div>
+    <div class="stat">
+      <span class="stat-status{% if indexing %} stat-status--active{% endif %}">
+        <span class="status-dot{% if indexing %} status-dot--active{% endif %}"></span>
+        {% if indexing %}indexing…{% else %}idle{% endif %}
+      </span>
+      <span class="stat-label">status</span>
+    </div>
   </div>
-  <div class="stat-divider"></div>
-  <div class="stat">
-    <span class="stat-number">{{ total_projects }}</span>
-    <span class="stat-label">projects</span>
-  </div>
-  <div class="stat-divider"></div>
-  <div class="stat">
-    <span class="stat-number">{{ total_agent }}</span>
-    <span class="stat-label">agent</span>
-  </div>
-  <div class="stat-divider"></div>
-  <div class="stat{% if total_stale > 0 %} stat--warning{% endif %}">
-    <span class="stat-number">{{ total_stale }}</span>
-    <span class="stat-label">stale</span>
-  </div>
-  <div class="stat-divider"></div>
-  <div class="stat">
-    <span class="stat-status{% if indexing %} stat-status--active{% endif %}">
-      {% if indexing %}indexing…{% else %}idle{% endif %}
-    </span>
-    <span class="stat-label">status</span>
+
+  <!-- Breakdown panel — CSS grid transition, no Alpine x-transition needed -->
+  <div class="stat-breakdown-wrapper" :class="expanded ? 'stat-breakdown--open' : ''">
+    <div class="stat-breakdown">
+      <template x-for="p in breakdownData" :key="p.name">
+        <a :href="p.url" class="breakdown-row">
+          <span class="breakdown-name" x-text="p.name"></span>
+          <span class="breakdown-count" x-text="p.count"></span>
+        </a>
+      </template>
+    </div>
   </div>
 </div>
 
@@ -91,6 +106,47 @@
 </div>
 
 <script>
+function statsBreakdown() {
+  return {
+    expanded: null,
+    projects: [],
+
+    async init() {
+      var resp = await fetch('/api/projects');
+      this.projects = await resp.json();
+    },
+
+    toggle(stat) {
+      if (this.expanded === stat) {
+        this.expanded = null;
+      } else {
+        this.expanded = stat;
+      }
+    },
+
+    get breakdownData() {
+      if (!this.expanded || !this.projects.length) return [];
+      var stat = this.expanded;
+      return this.projects
+        .map(function(p) {
+          var count, filter;
+          if (stat === 'total') { count = p.total; filter = ''; }
+          else if (stat === 'projects') { count = p.total; filter = ''; }
+          else if (stat === 'agent') { count = p.agent_memory; filter = '&type=agent-memory'; }
+          else if (stat === 'stale') { count = p.stale; filter = '&stale=1'; }
+          else { count = 0; filter = ''; }
+          return {
+            name: p.name,
+            count: count,
+            url: '/memories?project=' + p.name + filter
+          };
+        })
+        .filter(function(p) { return p.count > 0; })
+        .sort(function(a, b) { return b.count - a.count; });
+    }
+  };
+}
+
 function commandPalette() {
   return {
     query: '',
@@ -256,7 +312,17 @@ function prependFeedEntry(value, action) {
 function updateStatus(indexing) {
   var el = document.querySelector('.stat-status');
   if (!el) return;
-  el.textContent = indexing ? 'indexing\u2026' : 'idle';
+  var dot = el.querySelector('.status-dot');
+  if (dot) {
+    dot.className = 'status-dot' + (indexing ? ' status-dot--active' : '');
+  }
+  // Update text content without removing the dot
+  var textNode = el.lastChild;
+  if (textNode && textNode.nodeType === 3) {
+    textNode.textContent = indexing ? 'indexing\u2026' : 'idle';
+  } else {
+    el.appendChild(document.createTextNode(indexing ? 'indexing\u2026' : 'idle'));
+  }
   el.className = 'stat-status' + (indexing ? ' stat-status--active' : '');
 }
 </script>

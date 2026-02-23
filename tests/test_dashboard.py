@@ -386,6 +386,14 @@ def test_dashboard_empty(empty_dashboard_client):
     assert response.status_code == 200
 
 
+def test_api_projects_includes_stale(dashboard_client):
+    """GET /api/projects includes stale count per project."""
+    data = dashboard_client.get("/api/projects").json()
+    proj = data[0]
+    assert "stale" in proj
+    assert isinstance(proj["stale"], int)
+
+
 def test_event_has_created_at():
     """Events should have a created_at timestamp."""
     from datetime import datetime, timezone
