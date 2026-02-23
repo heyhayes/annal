@@ -914,6 +914,7 @@ a.feed-project:hover {
 }
 
 .feed-time {
+  grid-column: -1;
   color: var(--text-muted);
   font-size: 0.68rem;
   white-space: nowrap;
