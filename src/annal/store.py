@@ -321,21 +321,22 @@ class MemoryStore:
 
         return memories[:limit]
 
-    def get_by_ids(self, ids: list[str]) -> list[dict]:
+    def get_by_ids(self, ids: list[str], track_hits: bool = True) -> list[dict]:
         """Retrieve full memory records by their IDs."""
         if not ids:
             return []
         results = self._backend.get(ids)
-        now = datetime.now(timezone.utc).isoformat()
-        for r in results:
-            if r.metadata.get("chunk_type") == "agent-memory":
-                hit_count = int(r.metadata.get("hit_count", 0)) + 1
-                r.metadata["hit_count"] = hit_count
-                r.metadata["last_accessed_at"] = now
-                try:
-                    self._backend.update(r.id, text=None, embedding=None, metadata=dict(r.metadata))
-                except Exception:
-                    pass  # best-effort telemetry
+        if track_hits:
+            now = datetime.now(timezone.utc).isoformat()
+            for r in results:
+                if r.metadata.get("chunk_type") == "agent-memory":
+                    hit_count = int(r.metadata.get("hit_count", 0)) + 1
+                    r.metadata["hit_count"] = hit_count
+                    r.metadata["last_accessed_at"] = now
+                    try:
+                        self._backend.update(r.id, text=None, embedding=None, metadata=dict(r.metadata))
+                    except Exception:
+                        pass  # best-effort telemetry
         return [self._format_result(r) for r in results]
 
     def delete(self, mem_id: str) -> None:
@@ -490,6 +491,39 @@ class MemoryStore:
 
         results, total = self._backend.scan(offset=offset, limit=limit, where=where)
         return [self._format_result(r) for r in results], total
+
+    def find_stale(
+        self,
+        max_age_days: int = 60,
+        include_never_accessed: bool = True,
+    ) -> dict:
+        """Find stale agent memories based on access patterns.
+
+        Returns dict with stale_ids, never_accessed_ids, and their counts.
+        Only considers agent-memory chunks that are not superseded.
+        """
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=max_age_days)).isoformat()
+        stale_ids: list[str] = []
+        never_accessed_ids: list[str] = []
+
+        for doc_id, meta in self._iter_metadata():
+            if meta.get("chunk_type") != "agent-memory":
+                continue
+            if meta.get("superseded_by"):
+                continue
+            last_accessed = meta.get("last_accessed_at")
+            if last_accessed is None:
+                if include_never_accessed:
+                    never_accessed_ids.append(doc_id)
+            elif last_accessed < cutoff:
+                stale_ids.append(doc_id)
+
+        return {
+            "stale_ids": stale_ids,
+            "never_accessed_ids": never_accessed_ids,
+            "stale_count": len(stale_ids),
+            "never_accessed_count": len(never_accessed_ids),
+        }
 
     def stats(self, include_superseded: bool = False) -> dict:
         """Return collection statistics: total count, type breakdown, tag distribution, stale counts."""

@@ -30,6 +30,7 @@
       <th>Total</th>
       <th>Agent</th>
       <th>Indexed</th>
+      <th>Stale</th>
       <th>Top Tags</th>
     </tr>
   </thead>
@@ -43,6 +44,15 @@
       <td class="num-cell">{{ p.total }}</td>
       <td class="num-cell">{{ p.agent_memory }}</td>
       <td class="num-cell">{{ p.file_indexed }}</td>
+      <td class="num-cell">
+        {% if p.stale + p.never_accessed > 0 %}
+        <a href="/memories?project={{ p.name }}&stale=1" class="stale-link">
+          {{ p.stale + p.never_accessed }}
+        </a>
+        {% else %}
+        0
+        {% endif %}
+      </td>
       <td>
         {% for tag, count in p.top_tags %}
         <a href="/memories?project={{ p.name }}&tags={{ tag }}" class="tag-pill tag-clickable">{{ tag }} <span class="tag-count">{{ count }}</span></a>

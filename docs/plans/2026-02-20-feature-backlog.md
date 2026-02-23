@@ -111,8 +111,21 @@ Compiled from the initial spike. Items marked with [field] are things to validat
 
 - ~~`annal --install-service` CLI command~~ — shipped as `annal install` in spike 3
 
+## Dashboard UI improvements (Qdrant-inspired)
+
+Research from Qdrant's React + Material-UI web dashboard surfaced several ideas that translate well to Annal's HTMX+Jinja2 stack:
+
+- Tab-based project detail views — replace the flat memories page with tabs for Memories (browse), Stats (stale counts, tag distribution), Activity (SSE event log), and Config (watch paths, patterns). Qdrant uses Overview / API Keys / Metrics / Logs / Backups / Config tabs per cluster.
+- Tag cloud or chart on project overview — Qdrant uses Chart.js for distribution analysis. A tag co-occurrence graph, creation timeline, or hit-frequency heatmap would add depth beyond the current pill list. Even a simple bar chart of tag distribution would be more engaging.
+- Resource usage metrics — Qdrant shows visual node/disk/RAM/CPU gauges. Annal could show collection size, memory count trends, or indexing health as visual bar-fill or sparkline indicators rather than just numbers.
+- Light/dark/system-auto theme — Qdrant has three-mode theming. Annal is dark-only. System auto-detect via `prefers-color-scheme` media query would be a quick win.
+- Memory activity timeline — a chronological view of recent store/delete/search events from the SSE feed, rendered as a scrollable log panel. More useful than the current invisible SSE connection.
+- Interactive search tester — a lightweight tool where users can type a query and see results inline for debugging retrieval quality. Inspired by Qdrant's Monaco-powered API console.
+- Progressive disclosure for empty state — Qdrant routes to onboarding when empty. Annal could show a getting-started guide with example MCP calls instead of the current minimal empty state.
+
 ## Dashboard
 
+- Graceful dashboard shutdown — the dashboard's uvicorn runs on a daemon thread with its own asyncio event loop (`_start_dashboard` in `server.py`). On SIGTERM/restart, the main process shuts down the default thread pool executor before the dashboard loop exits, causing `RuntimeError: cannot schedule new futures after shutdown` in journalctl. Fix: store the `uvicorn.Server` instance and set `server.should_exit = True` in an atexit/signal handler so the event loop drains cleanly before the executor shuts down. Cosmetic-only (new process starts fine) but noisy.
 - Live updates via SSE — dashboard is static right now, no feedback when memories are being stored/deleted/indexed in the background. Use HTMX's `hx-ext="sse"` to push events from the server when the store changes, so the table and counts update in real time. Gives visibility into whether indexing is running and what agents are learning as it happens.
 - Activity indicator — show when file reconciliation or indexing is in progress (spinner, progress bar, or log stream).
 - [field] Performance with large result sets — browse loads all matching items into memory for client-side pagination. May need server-side cursor pagination for projects with thousands of chunks.

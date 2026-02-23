@@ -27,6 +27,11 @@
     {% if mem.superseded_by %}
     <span class="superseded-badge" title="Superseded by {{ mem.superseded_by }}">superseded</span>
     {% endif %}
+    {% if mem.stale and not mem.last_accessed_at %}
+    <span class="stale-badge" title="Never accessed">never accessed</span>
+    {% elif mem.stale %}
+    <span class="stale-badge" title="Last accessed {{ mem.last_accessed_at[:10] }}">stale</span>
+    {% endif %}
   </td>
   <td class="col-date">
     <span class="date-text">{{ mem.created_at[:10] if mem.created_at else "" }}</span>

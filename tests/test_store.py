@@ -816,3 +816,92 @@ def test_stats_includes_stale_counts(tmp_data_dir):
     stats = store.stats()
     assert stats["stale_count"] == 1
     assert stats["never_accessed_count"] == 1
+
+
+
+# ── Spike 14: Stale memory management ───────────────────────────────
+
+
+def test_find_stale_returns_stale_ids(tmp_data_dir):
+    """find_stale should return IDs of memories with old last_accessed_at."""
+    store = make_store(tmp_data_dir, "find_stale")
+    mem_id = store.store(content="Old accessed memory", tags=["test"])
+
+    # Manually set an old last_accessed_at
+    old = store._backend.get([mem_id])
+    old_meta = dict(old[0].metadata)
+    old_meta["last_accessed_at"] = "2025-01-01T00:00:00"
+    old_meta["hit_count"] = 1
+    store._backend.update(mem_id, text=None, embedding=None, metadata=old_meta)
+
+    result = store.find_stale(max_age_days=60)
+    assert mem_id in result["stale_ids"]
+    assert result["stale_count"] == 1
+
+
+def test_find_stale_excludes_file_indexed(tmp_data_dir):
+    """File-indexed chunks should not appear in stale results."""
+    store = make_store(tmp_data_dir, "find_stale_file")
+    store.store(
+        content="File content",
+        tags=["indexed"],
+        source="file:/tmp/README.md",
+        chunk_type="file-indexed",
+    )
+    # Also store a never-accessed agent memory for comparison
+    store.store(content="Agent memory", tags=["test"])
+
+    result = store.find_stale()
+    all_ids = result["stale_ids"] + result["never_accessed_ids"]
+    # File-indexed chunk should not be in the results at all
+    # Only the agent memory (never accessed) should appear
+    assert result["never_accessed_count"] == 1
+    assert result["stale_count"] == 0
+
+
+def test_find_stale_excludes_superseded(tmp_data_dir):
+    """Superseded memories should not appear in stale results."""
+    store = make_store(tmp_data_dir, "find_stale_superseded")
+    old_id = store.store(content="Old decision", tags=["decision"])
+    store.store(content="New decision", tags=["decision"], supersedes=old_id)
+
+    result = store.find_stale()
+    assert old_id not in result["stale_ids"]
+    assert old_id not in result["never_accessed_ids"]
+    # Only the new (non-superseded, never-accessed) memory should appear
+    assert result["never_accessed_count"] == 1
+
+
+def test_find_stale_respects_max_age_days(tmp_data_dir):
+    """Custom max_age_days threshold should work."""
+    store = make_store(tmp_data_dir, "find_stale_age")
+    mem_id = store.store(content="Recently accessed memory", tags=["test"])
+
+    # Set last_accessed_at to 10 days ago
+    from datetime import datetime, timezone, timedelta
+    ten_days_ago = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
+    old = store._backend.get([mem_id])
+    old_meta = dict(old[0].metadata)
+    old_meta["last_accessed_at"] = ten_days_ago
+    old_meta["hit_count"] = 1
+    store._backend.update(mem_id, text=None, embedding=None, metadata=old_meta)
+
+    # With 60-day threshold, should NOT be stale
+    result = store.find_stale(max_age_days=60)
+    assert mem_id not in result["stale_ids"]
+
+    # With 5-day threshold, should be stale
+    result = store.find_stale(max_age_days=5)
+    assert mem_id in result["stale_ids"]
+
+
+def test_find_stale_never_accessed_flag(tmp_data_dir):
+    """include_never_accessed=False should exclude never-accessed memories."""
+    store = make_store(tmp_data_dir, "find_stale_flag")
+    store.store(content="Never accessed memory", tags=["test"])
+
+    result_with = store.find_stale(include_never_accessed=True)
+    assert result_with["never_accessed_count"] == 1
+
+    result_without = store.find_stale(include_never_accessed=False)
+    assert result_without["never_accessed_count"] == 0
