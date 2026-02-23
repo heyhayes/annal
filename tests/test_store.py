@@ -810,8 +810,11 @@ def test_stats_includes_stale_counts(tmp_data_dir):
     old_meta["hit_count"] = 1
     store._backend.update(mem_id, text=None, embedding=None, metadata=old_meta)
 
-    # Store a never-accessed memory
-    store.store(content="Never accessed memory", tags=["test"])
+    # Store a never-accessed memory with old created_at
+    never_id = store.store(content="Never accessed memory", tags=["test"])
+    never_meta = dict(store._backend.get([never_id])[0].metadata)
+    never_meta["created_at"] = "2025-01-01T00:00:00"
+    store._backend.update(never_id, text=None, embedding=None, metadata=never_meta)
 
     stats = store.stats()
     assert stats["stale_count"] == 1

@@ -207,8 +207,10 @@ function commandPalette() {
 }
 
 function timeAgo(iso) {
+  if (!iso) return '';
   var now = Date.now();
   var then = new Date(iso).getTime();
+  if (isNaN(then)) return '';
   var seconds = Math.floor((now - then) / 1000);
   if (seconds < 5) return 'now';
   if (seconds < 60) return seconds + 's ago';
