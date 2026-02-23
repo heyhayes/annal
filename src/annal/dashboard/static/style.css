@@ -688,7 +688,7 @@ input[type="checkbox"] {
 
 .palette-input-wrapper:focus-within {
   border-color: var(--accent-dim);
-  box-shadow: 0 0 0 1px var(--accent-glow);
+  box-shadow: 0 0 0 1px var(--accent-glow), 0 0 12px var(--accent-glow);
 }
 
 .palette-prompt {
@@ -844,6 +844,8 @@ input[type="checkbox"] {
   align-items: baseline;
   gap: 0.5rem;
   padding: 0.35rem 0;
+  padding-left: 0.5rem;
+  border-left: 3px solid transparent;
   font-family: var(--font-mono);
   font-size: 0.78rem;
   animation: feedIn 0.2s ease-out;
@@ -925,7 +927,7 @@ a.feed-project:hover {
 
 .feed-empty {
   color: var(--text-muted);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 0.8rem;
   padding: 2rem 0;
   text-align: center;
@@ -1021,4 +1023,40 @@ a.feed-project:hover {
 
 .breakdown-count {
   color: var(--text-muted);
+}
+
+/* ── Body texture — subtle dot grid ── */
+
+body {
+  background-image: radial-gradient(circle, var(--border) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* ── Nav active state ── */
+
+.nav-link--active {
+  color: var(--accent) !important;
+  border-bottom: 2px solid var(--accent);
+  padding-bottom: 0.15rem;
+}
+
+/* ── Feed entry left borders ── */
+
+.feed-entry--memory_stored,
+.feed-entry--memory_updated {
+  border-left-color: var(--type-agent);
+}
+
+.feed-entry--memory_deleted {
+  border-left-color: var(--danger);
+}
+
+.feed-entry--index_started,
+.feed-entry--index_complete,
+.feed-entry--index_progress {
+  border-left-color: var(--type-file);
+}
+
+.feed-entry--index_failed {
+  border-left-color: var(--danger);
 }

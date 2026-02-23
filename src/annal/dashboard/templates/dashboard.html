@@ -88,7 +88,7 @@
   <h2 class="feed-title">Activity</h2>
   <div class="feed-container" id="feed-container">
     {% for event in recent_events %}
-    <div class="feed-entry">
+    <div class="feed-entry feed-entry--{{ event.type }}">
       <a href="/memories?project={{ event.project }}" class="feed-project">{{ event.project }}</a>
       <span class="feed-dot">&middot;</span>
       <span class="feed-action feed-action--{{ event.type }}">{{ event.type.replace('_', ' ') }}</span>
@@ -266,7 +266,7 @@ function prependFeedEntry(value, action) {
   if (empty) empty.remove();
 
   var entry = document.createElement('div');
-  entry.className = 'feed-entry';
+  entry.className = 'feed-entry feed-entry--' + eventType;
 
   var projLink = document.createElement('a');
   projLink.className = 'feed-project';
