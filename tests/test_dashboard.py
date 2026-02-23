@@ -287,9 +287,9 @@ def test_event_bus_thread_safety():
     assert errors == [], f"Thread safety errors: {errors}"
 
 
-def test_projects_page_has_sse_connection(dashboard_client):
-    """The projects page should include SSE connection for live updates."""
-    response = dashboard_client.get("/projects")
+def test_dashboard_has_sse_connection(dashboard_client):
+    """The dashboard page should include SSE connection for live updates."""
+    response = dashboard_client.get("/")
     assert response.status_code == 200
     html = response.text
     assert "sse-connect" in html or "events" in html
@@ -352,11 +352,6 @@ def test_api_projects(dashboard_client):
 
 def test_api_projects_excludes_empty(tmp_data_dir, tmp_config_path):
     """GET /api/projects excludes projects with zero memories."""
-    from annal.config import AnnalConfig, ProjectConfig
-    from annal.dashboard import create_dashboard_app
-    from annal.pool import StorePool
-    from starlette.testclient import TestClient
-
     config = AnnalConfig(
         config_path=tmp_config_path,
         data_dir=tmp_data_dir,
@@ -372,15 +367,6 @@ def test_api_projects_excludes_empty(tmp_data_dir, tmp_config_path):
     names = [p["name"] for p in data]
     assert "nonempty" in names
     assert "empty" not in names
-
-
-def test_projects_page(dashboard_client):
-    """GET /projects shows the project table."""
-    response = dashboard_client.get("/projects")
-    assert response.status_code == 200
-    html = response.text
-    assert "testproj" in html
-    assert "3" in html  # total memories
 
 
 def test_dashboard_landing(dashboard_client):
