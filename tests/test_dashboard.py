@@ -254,7 +254,7 @@ def test_sse_endpoint_streams_events(dashboard_client):
 
             for chunk in response.iter_text():
                 assert "event: memory_stored" in chunk
-                assert "data: test|id123" in chunk
+                assert "data: test|id123|" in chunk
                 break
     finally:
         server.should_exit = True
@@ -384,3 +384,16 @@ def test_dashboard_empty(empty_dashboard_client):
     """GET / with no projects shows empty-friendly dashboard."""
     response = empty_dashboard_client.get("/")
     assert response.status_code == 200
+
+
+def test_event_has_created_at():
+    """Events should have a created_at timestamp."""
+    from datetime import datetime, timezone
+    from annal.events import Event
+
+    event = Event(type="memory_stored", project="test", detail="d")
+    assert hasattr(event, "created_at")
+    assert isinstance(event.created_at, str)
+    # Should be a valid ISO timestamp
+    parsed = datetime.fromisoformat(event.created_at)
+    assert parsed.tzinfo is not None

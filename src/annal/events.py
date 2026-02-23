@@ -6,7 +6,8 @@ import logging
 import queue
 import threading
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +18,7 @@ class Event:
     type: str      # "memory_stored", "memory_updated", "memory_deleted", "index_started", "index_complete", "index_failed"
     project: str
     detail: str = ""
+    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
 class EventBus:

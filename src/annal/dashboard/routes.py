@@ -386,7 +386,7 @@ def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
                         )
                         safe_project = event.project.replace("\n", " ")
                         safe_detail = event.detail.replace("\n", " ")
-                        yield f"event: {event.type}\ndata: {safe_project}|{safe_detail}\n\n"
+                        yield f"event: {event.type}\ndata: {safe_project}|{safe_detail}|{event.created_at}\n\n"
                     except queue.Empty:
                         # Timeout — send keepalive comment
                         yield ": keepalive\n\n"
