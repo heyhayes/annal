@@ -1089,3 +1089,62 @@ async def test_search_default_mode_is_summary(mcp):
     # Summary mode should give content_preview, not full content
     assert "content_preview" in data["results"][0]
     assert "content" not in data["results"][0]
+
+
+# ── store_batch tool tests ───────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_store_batch_tool_stores_multiple(mcp):
+    """store_batch with 3 memories should store all and report correctly."""
+    result = await _call(mcp, "store_batch", {
+        "project": "test",
+        "memories": [
+            {"content": "Billing uses Stripe for payments", "tags": ["billing"]},
+            {"content": "Auth uses JWT with RS256 algorithm", "tags": ["auth"]},
+            {"content": "Frontend uses React with TypeScript", "tags": ["frontend"]},
+        ],
+    })
+    assert "3 stored" in result
+    assert "0 skipped" in result
+
+    # All should be searchable
+    search = await _call(mcp, "search_memories", {
+        "project": "test", "query": "Stripe payments",
+    })
+    assert "Stripe" in search
+
+
+@pytest.mark.asyncio
+async def test_store_batch_tool_normalizes_tags(mcp):
+    """Mixed-case tags should be lowercased."""
+    result = await _call(mcp, "store_batch", {
+        "project": "test",
+        "memories": [
+            {"content": "Tag normalization test memory", "tags": ["Decision", "AUTH"]},
+        ],
+    })
+    assert "1 stored" in result
+
+    # Verify tags are lowercased via expand
+    mem_id = result.split("Stored: ")[-1].strip().split(",")[0].strip()
+    expanded = await _call(mcp, "expand_memories", {
+        "project": "test", "memory_ids": [mem_id],
+    })
+    assert "decision" in expanded
+    assert "auth" in expanded
+    assert "Decision" not in expanded
+    assert "AUTH" not in expanded
+
+
+@pytest.mark.asyncio
+async def test_store_batch_tool_validates_fields(mcp):
+    """Missing 'content' field should return an error message."""
+    result = await _call(mcp, "store_batch", {
+        "project": "test",
+        "memories": [
+            {"tags": ["billing"]},
+        ],
+    })
+    assert "Error" in result
+    assert "content" in result
