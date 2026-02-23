@@ -82,17 +82,17 @@ def dashboard_with_pool(tmp_data_dir, tmp_config_path):
     return TestClient(app), pool
 
 
-def test_index_page(dashboard_client):
-    response = dashboard_client.get("/")
+def test_projects_page_with_data(dashboard_client):
+    response = dashboard_client.get("/projects")
     assert response.status_code == 200
     html = response.text
     assert "testproj" in html
-    # The index page shows total count and per-type counts
+    # The projects page shows total count and per-type counts
     assert "3" in html  # total memories
 
 
-def test_index_page_no_projects(empty_dashboard_client):
-    response = empty_dashboard_client.get("/")
+def test_projects_page_empty(empty_dashboard_client):
+    response = empty_dashboard_client.get("/projects")
     assert response.status_code == 200
     html = response.text
     assert "No projects configured yet" in html
@@ -287,9 +287,9 @@ def test_event_bus_thread_safety():
     assert errors == [], f"Thread safety errors: {errors}"
 
 
-def test_index_page_has_sse_connection(dashboard_client):
-    """The index page should include SSE connection for live updates."""
-    response = dashboard_client.get("/")
+def test_projects_page_has_sse_connection(dashboard_client):
+    """The projects page should include SSE connection for live updates."""
+    response = dashboard_client.get("/projects")
     assert response.status_code == 200
     html = response.text
     assert "sse-connect" in html or "events" in html
@@ -372,3 +372,12 @@ def test_api_projects_excludes_empty(tmp_data_dir, tmp_config_path):
     names = [p["name"] for p in data]
     assert "nonempty" in names
     assert "empty" not in names
+
+
+def test_projects_page(dashboard_client):
+    """GET /projects shows the project table."""
+    response = dashboard_client.get("/projects")
+    assert response.status_code == 200
+    html = response.text
+    assert "testproj" in html
+    assert "3" in html  # total memories

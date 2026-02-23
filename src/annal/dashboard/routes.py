@@ -41,7 +41,7 @@ def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
     """Create dashboard route list with access to the store pool and config."""
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
-    async def index(request: Request) -> Response:
+    async def projects_page(request: Request) -> Response:
         """Project overview with stats cards."""
         project_stats = []
         for name in sorted(config.projects):
@@ -370,7 +370,7 @@ def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
         })
 
     return [
-        Route("/", index),
+        Route("/projects", projects_page),
         Route("/api/projects", api_projects),
         Route("/memories", memories),
         Route("/memories/table", memories_table),
