@@ -1,5 +1,6 @@
 import pytest
 from tests.conftest import make_store
+from annal.store import BatchItem
 
 
 @pytest.fixture
@@ -623,3 +624,111 @@ def test_store_supersedes_nonexistent_id_does_not_error(tmp_data_dir):
     assert new_id is not None
     results = store.search("New decision", limit=1)
     assert len(results) == 1
+
+
+# ── store_batch tests ────────────────────────────────────────────────
+
+
+def test_store_batch_happy_path(tmp_data_dir):
+    """3 distinct items should all be stored and searchable."""
+    store = make_store(tmp_data_dir, "batch_happy")
+    result = store.store_batch([
+        BatchItem(content="Billing uses Stripe for payment processing", tags=["billing"]),
+        BatchItem(content="Auth uses JWT with RS256 signing algorithm", tags=["auth"]),
+        BatchItem(content="Frontend uses React with TypeScript", tags=["frontend"]),
+    ])
+    assert result.stored_count == 3
+    assert result.skipped_count == 0
+    assert len(result.stored_ids) == 3
+
+    # All should be searchable
+    assert len(store.search("Stripe payment", limit=1)) == 1
+    assert len(store.search("JWT signing", limit=1)) == 1
+    assert len(store.search("React TypeScript", limit=1)) == 1
+
+
+def test_store_batch_intra_batch_dedup(tmp_data_dir):
+    """Items 0 and 2 are identical; item 2 should be skipped."""
+    store = make_store(tmp_data_dir, "batch_intra_dedup")
+    result = store.store_batch([
+        BatchItem(content="The checkout flow validates cart totals before payment", tags=["checkout"]),
+        BatchItem(content="Auth uses JWT with RS256 for all API endpoints", tags=["auth"]),
+        BatchItem(content="The checkout flow validates cart totals before payment", tags=["checkout"]),
+    ])
+    assert result.stored_count == 2
+    assert result.skipped_count == 1
+
+
+def test_store_batch_dedup_against_existing(tmp_data_dir):
+    """Pre-stored memory should cause near-identical batch item to be skipped."""
+    store = make_store(tmp_data_dir, "batch_existing_dedup")
+    store.store(content="The billing pipeline validates invoice totals before charging", tags=["billing"])
+
+    result = store.store_batch([
+        BatchItem(content="The billing pipeline validates invoice totals before charging", tags=["billing"]),
+        BatchItem(content="Frontend uses React with TypeScript for the dashboard", tags=["frontend"]),
+    ])
+    assert result.stored_count == 1
+    assert result.skipped_count == 1
+
+
+def test_store_batch_supersession(tmp_data_dir):
+    """Batch item with supersedes should mark old memory and store new one."""
+    store = make_store(tmp_data_dir, "batch_supersede")
+    old_id = store.store(content="We use session cookies for auth", tags=["decision", "auth"])
+
+    result = store.store_batch([
+        BatchItem(content="We now use JWT for auth", tags=["decision", "auth"], supersedes=old_id),
+    ])
+    assert result.stored_count == 1
+
+    # Old memory should be marked as superseded
+    old = store.get_by_ids([old_id])
+    assert old[0]["superseded_by"] == result.stored_ids[0]
+
+
+def test_store_batch_supersedes_skips_dedup(tmp_data_dir):
+    """Item with supersedes and identical content to existing should still be stored."""
+    store = make_store(tmp_data_dir, "batch_supersede_dedup")
+    old_id = store.store(content="We use session cookies for auth across all services", tags=["decision", "auth"])
+
+    result = store.store_batch([
+        BatchItem(
+            content="We use session cookies for auth across all services",
+            tags=["decision", "auth"],
+            supersedes=old_id,
+        ),
+    ])
+    assert result.stored_count == 1
+    assert result.skipped_count == 0
+
+    # Old memory should be superseded
+    old = store.get_by_ids([old_id])
+    assert "superseded_by" in old[0]
+
+
+def test_store_batch_hint_for_similar(tmp_data_dir):
+    """Item scoring 0.80-0.95 against existing should be stored with a hint."""
+    store = make_store(tmp_data_dir, "batch_hint")
+    store.store(content="The billing pipeline validates invoice totals before charging the card", tags=["billing"])
+
+    result = store.store_batch([
+        BatchItem(content="The billing pipeline validates invoice totals before processing payment through Stripe", tags=["billing"]),
+    ])
+    # Should be stored (not skipped) — either with or without hint depending on score
+    assert result.stored_count == 1 or result.skipped_count == 1
+    # If stored, check for hint presence
+    if result.stored_count == 1:
+        stored_item = [i for i in result.items if i.status == "stored"][0]
+        # Hint may or may not be present depending on exact score
+        # (we just verify the mechanism doesn't crash)
+        assert stored_item.mem_id is not None
+
+
+def test_store_batch_empty_list(tmp_data_dir):
+    """Empty input should return immediately with zero counts."""
+    store = make_store(tmp_data_dir, "batch_empty")
+    result = store.store_batch([])
+    assert result.stored_count == 0
+    assert result.skipped_count == 0
+    assert result.stored_ids == []

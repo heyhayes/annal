@@ -5,9 +5,43 @@ from __future__ import annotations
 import re
 import threading
 import uuid
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from annal.backend import Embedder, VectorBackend, VectorResult
+
+
+@dataclass
+class BatchItem:
+    content: str
+    tags: list[str]
+    source: str = ""
+    supersedes: str | None = None
+
+
+@dataclass
+class BatchItemResult:
+    status: str  # "stored", "skipped"
+    mem_id: str | None = None
+    hint: str | None = None
+    skip_reason: str | None = None
+
+
+@dataclass
+class BatchResult:
+    items: list[BatchItemResult] = field(default_factory=list)
+
+    @property
+    def stored_count(self) -> int:
+        return sum(1 for i in self.items if i.status == "stored")
+
+    @property
+    def skipped_count(self) -> int:
+        return sum(1 for i in self.items if i.status == "skipped")
+
+    @property
+    def stored_ids(self) -> list[str]:
+        return [i.mem_id for i in self.items if i.status == "stored" and i.mem_id]
 
 FUZZY_TAG_THRESHOLD = 0.72
 
@@ -139,6 +173,102 @@ class MemoryStore:
 
         self._invalidate_tag_cache()
         return mem_id
+
+    def store_batch(self, items: list[BatchItem]) -> BatchResult:
+        """Store multiple memories in a single call with deduplication.
+
+        Batch-embeds all content, deduplicates within the batch and against
+        the existing store, then inserts survivors. Returns per-item results.
+        """
+        import numpy as np
+
+        result = BatchResult()
+        if not items:
+            return result
+
+        # Batch embed all content up front
+        embeddings = self._embedder.embed_batch([item.content for item in items])
+
+        # Track which items are skipped (by index)
+        skipped: set[int] = set()
+
+        # Intra-batch dedup: for each pair, if cosine > 0.95 and neither
+        # has supersedes, mark the later item as skipped
+        np_embeddings = [np.array(e) for e in embeddings]
+        norms = [np.linalg.norm(e) for e in np_embeddings]
+
+        for i in range(len(items)):
+            if i in skipped or items[i].supersedes:
+                continue
+            for j in range(i + 1, len(items)):
+                if j in skipped or items[j].supersedes:
+                    continue
+                if norms[i] == 0 or norms[j] == 0:
+                    continue
+                sim = float(np.dot(np_embeddings[i], np_embeddings[j]) / (norms[i] * norms[j]))
+                if sim > 0.95:
+                    skipped.add(j)
+
+        # Per-item processing
+        now = datetime.now(timezone.utc).isoformat()
+        where = self._build_where(include_superseded=False)
+
+        for idx, item in enumerate(items):
+            if idx in skipped:
+                result.items.append(BatchItemResult(
+                    status="skipped",
+                    skip_reason="similar to another item in this batch",
+                ))
+                continue
+
+            hint: str | None = None
+
+            # Dedup against existing store (skip if superseding)
+            if not item.supersedes and self._backend.count() > 0:
+                candidates = self._backend.query(embeddings[idx], limit=10, where=where)
+                should_skip = False
+                for c in candidates:
+                    if c.metadata.get("chunk_type") != "agent-memory":
+                        continue
+                    score = 1.0 - (c.distance if c.distance is not None else 0.0)
+                    if score > 0.95:
+                        result.items.append(BatchItemResult(
+                            status="skipped",
+                            skip_reason=f"similar to existing {c.id} (score {score:.2f})",
+                        ))
+                        should_skip = True
+                        break
+                    if score >= 0.80 and hint is None:
+                        hint = f"similar to {c.id} (score {score:.2f})"
+                if should_skip:
+                    continue
+
+            # Insert
+            mem_id = str(uuid.uuid4())
+            metadata: dict = {
+                "tags": item.tags,
+                "source": item.source,
+                "chunk_type": "agent-memory",
+                "created_at": now,
+            }
+            self._backend.insert(mem_id, item.content, embeddings[idx], metadata)
+
+            # Handle supersession
+            if item.supersedes:
+                old = self._backend.get([item.supersedes])
+                if old:
+                    old_meta = dict(old[0].metadata)
+                    old_meta["superseded_by"] = mem_id
+                    self._backend.update(item.supersedes, text=None, embedding=None, metadata=old_meta)
+
+            result.items.append(BatchItemResult(
+                status="stored",
+                mem_id=mem_id,
+                hint=hint,
+            ))
+
+        self._invalidate_tag_cache()
+        return result
 
     def search(
         self,

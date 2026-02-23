@@ -14,6 +14,7 @@ from mcp.server.fastmcp import FastMCP
 from annal.config import AnnalConfig, DEFAULT_CONFIG_PATH
 from annal.events import event_bus, Event
 from annal.pool import StorePool
+from annal.store import BatchItem
 
 logging.basicConfig(level=logging.INFO, stream=sys.stderr)
 logger = logging.getLogger(__name__)
@@ -58,6 +59,8 @@ Store memories when you encounter information worth preserving across sessions:
 - User preferences for workflow, style, or tooling
 - Important patterns or conventions in the codebase
 - Domain knowledge that took effort to discover
+
+Use `store_batch` to store 2+ memories at once — reduces tool calls and is more efficient.
 
 ## When to search
 Search annal at these moments — prefer summary mode for most searches:
@@ -267,6 +270,65 @@ def create_server(
             msg += "\n" + "\n".join(hints)
 
         return msg
+
+    @mcp.tool()
+    def store_batch(
+        project: str,
+        memories: list[dict],
+    ) -> str:
+        """Store multiple memories in a single call. More efficient than repeated store_memory.
+
+        Args:
+            project: Project name
+            memories: List of memory objects, each with:
+                - content (str, required): The knowledge to store
+                - tags (list[str] | str, required): Domain labels
+                - source (str, optional): Where this came from
+                - supersedes (str, optional): ID of memory this replaces
+        """
+        if not memories:
+            return f"[{project}] Batch: 0 stored, 0 skipped"
+
+        # Validate and build BatchItem list
+        batch_items: list[BatchItem] = []
+        for i, mem in enumerate(memories):
+            if not isinstance(mem, dict):
+                return f"[{project}] Error: item {i} is not a dict"
+            if "content" not in mem:
+                return f"[{project}] Error: item {i} missing required field 'content'"
+            if "tags" not in mem:
+                return f"[{project}] Error: item {i} missing required field 'tags'"
+            tags = _normalize_tags(mem["tags"])
+            if not tags:
+                return f"[{project}] Error: item {i} has empty tags after normalization"
+            batch_items.append(BatchItem(
+                content=mem["content"],
+                tags=tags,
+                source=mem.get("source", ""),
+                supersedes=mem.get("supersedes"),
+            ))
+
+        store = pool.get_store(project)
+        batch_result = store.store_batch(batch_items)
+
+        # Emit events for stored memories
+        for item_result in batch_result.items:
+            if item_result.status == "stored" and item_result.mem_id:
+                event_bus.push(Event(type="memory_stored", project=project, detail=item_result.mem_id))
+
+        # Format response
+        lines = [f"[{project}] Batch: {batch_result.stored_count} stored, {batch_result.skipped_count} skipped"]
+
+        if batch_result.stored_ids:
+            lines.append(f"  Stored: {', '.join(batch_result.stored_ids)}")
+
+        for item_result in batch_result.items:
+            if item_result.status == "skipped" and item_result.skip_reason:
+                lines.append(f"  Skipped: {item_result.skip_reason}")
+            if item_result.hint:
+                lines.append(f"  Hint: {item_result.mem_id} {item_result.hint} — consider supersedes")
+
+        return "\n".join(lines)
 
     @mcp.tool()
     def search_memories(
