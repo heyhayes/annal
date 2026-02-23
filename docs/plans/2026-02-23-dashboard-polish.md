@@ -8,6 +8,16 @@
 
 **Tech Stack:** HTMX, Alpine.js (CDN), Jinja2, Starlette, SSE
 
+**Design review notes (incorporated below):**
+- Feed entries use CSS grid (not flex) for aligned columns
+- Breakdown panel uses `grid-template-rows: 0fr/1fr` transition (not `max-height`)
+- Stats ribbon gets contained background (`bg-surface` + border)
+- Body gets subtle dot grid background texture
+- Command palette focus gets stronger double box-shadow glow
+- Feed left-borders are 3px (not 2px)
+- Source Sans 3 used deliberately for non-data text (feed-detail, empty states)
+- Favicon uses `<path>` elements (not `<text>`) for clean 16px rendering
+
 ---
 
 ### Task 1: Event Timestamps
@@ -238,9 +248,24 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 ```
 
-**Step 4: Add CSS for feed-project as link and feed-time**
+**Step 4: Update feed CSS to use grid layout and add link/time styles**
 
-Append to `src/annal/dashboard/static/style.css`:
+In `src/annal/dashboard/static/style.css`, replace the existing `.feed-entry` rule and add new rules. The feed entry switches from flex to CSS grid for aligned columns:
+
+```css
+.feed-entry {
+  display: grid;
+  grid-template-columns: 120px auto 1fr auto;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.35rem 0;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  animation: feedIn 0.2s ease-out;
+}
+```
+
+Add link and time styles:
 
 ```css
 a.feed-project {
@@ -248,19 +273,28 @@ a.feed-project {
   font-weight: 500;
   text-decoration: none;
   transition: color 0.15s;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 a.feed-project:hover {
   color: var(--accent);
 }
 
+.feed-detail {
+  font-family: var(--font-ui);
+}
+
 .feed-time {
-  margin-left: auto;
   color: var(--text-muted);
   font-size: 0.68rem;
   white-space: nowrap;
+  text-align: right;
 }
 ```
+
+Note: `.feed-detail` switches to `--font-ui` (Source Sans 3) to create visual hierarchy — data identifiers stay in mono, natural language description uses the proportional font.
 
 **Step 5: Commit**
 
@@ -355,17 +389,16 @@ In `src/annal/dashboard/templates/dashboard.html`, replace the stats ribbon (lin
     </div>
   </div>
 
-  <!-- Breakdown panel -->
-  <div class="stat-breakdown" x-show="expanded" x-cloak x-transition:enter="breakdown-enter"
-       x-transition:enter-start="breakdown-enter-start" x-transition:enter-end="breakdown-enter-end"
-       x-transition:leave="breakdown-leave" x-transition:leave-start="breakdown-leave-start"
-       x-transition:leave-end="breakdown-leave-end">
-    <template x-for="p in breakdownData" :key="p.name">
-      <a :href="p.url" class="breakdown-row">
-        <span class="breakdown-name" x-text="p.name"></span>
-        <span class="breakdown-count" x-text="p.count"></span>
-      </a>
-    </template>
+  <!-- Breakdown panel — CSS grid transition, no Alpine x-transition needed -->
+  <div class="stat-breakdown-wrapper" :class="expanded ? 'stat-breakdown--open' : ''">
+    <div class="stat-breakdown">
+      <template x-for="p in breakdownData" :key="p.name">
+        <a :href="p.url" class="breakdown-row">
+          <span class="breakdown-name" x-text="p.name"></span>
+          <span class="breakdown-count" x-text="p.count"></span>
+        </a>
+      </template>
+    </div>
   </div>
 </div>
 ```
@@ -430,6 +463,10 @@ Append to `src/annal/dashboard/static/style.css`:
 
 .stats-ribbon-container .stats-ribbon {
   margin-bottom: 0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 1.25rem 1rem;
 }
 
 .stat--clickable {
@@ -465,17 +502,30 @@ Append to `src/annal/dashboard/static/style.css`:
   animation: pulse 1.5s ease-in-out infinite;
 }
 
+/* Breakdown panel — grid-template-rows transition (no max-height jank) */
+
+.stat-breakdown-wrapper {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.2s ease;
+}
+
+.stat-breakdown-wrapper > .stat-breakdown {
+  overflow: hidden;
+}
+
+.stat-breakdown--open {
+  grid-template-rows: 1fr;
+}
+
 .stat-breakdown {
+  padding: 0;
+}
+
+.stat-breakdown--open .stat-breakdown {
   padding: 0.75rem 0;
   border-top: 1px solid var(--border);
 }
-
-.breakdown-enter { transition: opacity 0.15s, max-height 0.2s; overflow: hidden; }
-.breakdown-enter-start { opacity: 0; max-height: 0; }
-.breakdown-enter-end { opacity: 1; max-height: 300px; }
-.breakdown-leave { transition: opacity 0.1s, max-height 0.15s; overflow: hidden; }
-.breakdown-leave-start { opacity: 1; max-height: 300px; }
-.breakdown-leave-end { opacity: 0; max-height: 0; }
 
 .breakdown-row {
   display: flex;
@@ -503,6 +553,8 @@ Append to `src/annal/dashboard/static/style.css`:
 }
 ```
 
+Note: The breakdown panel uses `grid-template-rows: 0fr` → `1fr` for a smooth expand/collapse transition. This avoids the jank of `max-height` transitions where the timing doesn't match the actual content height. The wrapper holds a single child with `overflow: hidden`, and the grid row height animates from zero to content-fit.
+
 **Step 8: Commit**
 
 ```bash
@@ -514,7 +566,7 @@ git commit -m "feat(dashboard): expandable stats ribbon with per-project breakdo
 
 ### Task 4: Visual Polish and Favicon
 
-Add feed left-border colors, nav active state, and the favicon.
+Add feed left-border colors, nav active state, favicon, body texture, and focus glow refinements.
 
 **Files:**
 - Modify: `src/annal/dashboard/templates/base.html`
@@ -526,7 +578,7 @@ Add feed left-border colors, nav active state, and the favicon.
 In `src/annal/dashboard/templates/base.html`, add inside `<head>` before the stylesheet link:
 
 ```html
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%230a0e17'/><text x='4' y='23' font-family='monospace' font-size='18' font-weight='bold' fill='%23f0b429'>%3E_</text></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%230a0e17'/><path d='M6 20l8-8M6 20l8 8' stroke='%23f0b429' stroke-width='3' stroke-linecap='round' fill='none'/><line x1='18' y1='28' x2='26' y2='28' stroke='%23f0b429' stroke-width='3' stroke-linecap='round'/></svg>">
 ```
 
 **Step 2: Add nav active state**
@@ -560,6 +612,13 @@ entry.className = 'feed-entry feed-entry--' + eventType;
 Append to `src/annal/dashboard/static/style.css`:
 
 ```css
+/* ── Body texture — subtle dot grid ── */
+
+body {
+  background-image: radial-gradient(circle, var(--border) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
 /* ── Nav active state ── */
 
 .nav-link--active {
@@ -568,10 +627,17 @@ Append to `src/annal/dashboard/static/style.css`:
   padding-bottom: 0.15rem;
 }
 
-/* ── Feed entry left borders ── */
+/* ── Command palette focus — stronger glow ── */
+
+.palette-input-wrapper:focus-within {
+  border-color: var(--accent-dim);
+  box-shadow: 0 0 0 1px var(--accent-glow), 0 0 12px var(--accent-glow);
+}
+
+/* ── Feed entry left borders (3px) ── */
 
 .feed-entry {
-  border-left: 2px solid transparent;
+  border-left: 3px solid transparent;
   padding-left: 0.5rem;
 }
 
@@ -593,7 +659,15 @@ Append to `src/annal/dashboard/static/style.css`:
 .feed-entry--index_failed {
   border-left-color: var(--danger);
 }
+
+/* ── Feed empty state — use UI font ── */
+
+.feed-empty {
+  font-family: var(--font-ui);
+}
 ```
+
+Note: The body dot grid creates subtle depth without overwhelming the content. The double box-shadow on command palette focus (inner outline + outer glow) gives a more intentional focus state. The 3px left borders on feed entries provide better visual weight. The font role separation (mono for data, Source Sans 3 for prose) is applied in Task 2's `.feed-detail` rule and here on `.feed-empty`.
 
 **Step 5: Run full test suite**
 
@@ -631,9 +705,14 @@ Task 1 is the foundation (Event.created_at + SSE format). Task 2 depends on it (
 Run `.venv/bin/pytest -v` after task 4. Then restart annal service and test manually:
 - Activity feed shows relative timestamps
 - Project names in feed are clickable links
-- Click a stat number → breakdown panel expands with per-project rows
+- Feed entries align in CSS grid columns (project, action, detail, time)
+- Feed detail text renders in Source Sans 3 (proportional), project/action in JetBrains Mono
+- Click a stat number → breakdown panel expands smoothly (grid-template-rows transition)
 - Click project in breakdown → navigates to filtered memories page
-- Click same stat → panel collapses
-- Feed entries have colored left borders
-- `>_` favicon visible in browser tab
+- Click same stat → panel collapses smoothly
+- Stats ribbon has contained background with border
+- Feed entries have 3px colored left borders (teal for store/update, red for delete, indigo for index)
+- `>_` favicon visible in browser tab (path-based SVG, renders clean at 16x16)
 - Nav "projects" link highlighted when on `/projects` page
+- Subtle dot grid texture visible on body background
+- Command palette focus shows double glow (outline + diffuse)
