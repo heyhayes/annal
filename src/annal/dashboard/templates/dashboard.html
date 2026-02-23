@@ -148,5 +148,58 @@ function commandPalette() {
     }
   };
 }
+
+// SSE activity feed updates
+document.body.addEventListener('sse:memory_stored', function(e) {
+  prependFeedEntry(e.detail.value, 'memory stored');
+});
+document.body.addEventListener('sse:memory_deleted', function(e) {
+  prependFeedEntry(e.detail.value, 'memory deleted');
+});
+document.body.addEventListener('sse:memory_updated', function(e) {
+  prependFeedEntry(e.detail.value, 'memory updated');
+});
+document.body.addEventListener('sse:index_started', function(e) {
+  prependFeedEntry(e.detail.value, 'index started');
+  updateStatus(true);
+});
+document.body.addEventListener('sse:index_complete', function(e) {
+  prependFeedEntry(e.detail.value, 'index complete');
+  updateStatus(false);
+});
+
+function prependFeedEntry(value, action) {
+  var parts = value.split('|');
+  var project = parts[0] || '';
+  var detail = parts[1] || '';
+  var eventType = action.replace(/ /g, '_');
+  var container = document.getElementById('feed-container');
+  if (!container) return;
+
+  // Remove "no recent activity" message if present
+  var empty = container.querySelector('.feed-empty');
+  if (empty) empty.remove();
+
+  var entry = document.createElement('div');
+  entry.className = 'feed-entry';
+  entry.innerHTML =
+    '<span class="feed-project">' + project + '</span>' +
+    '<span class="feed-dot">&middot;</span>' +
+    '<span class="feed-action feed-action--' + eventType + '">' + action + '</span>' +
+    (detail ? '<span class="feed-dot">&middot;</span><span class="feed-detail">' + detail.substring(0, 80) + '</span>' : '');
+  container.insertBefore(entry, container.firstChild);
+
+  // Cap visible entries
+  while (container.children.length > 20) {
+    container.removeChild(container.lastChild);
+  }
+}
+
+function updateStatus(indexing) {
+  var el = document.querySelector('.stat-status');
+  if (!el) return;
+  el.textContent = indexing ? 'indexing\u2026' : 'idle';
+  el.className = 'stat-status' + (indexing ? ' stat-status--active' : '');
+}
 </script>
 {% endblock %}
