@@ -1148,3 +1148,225 @@ async def test_store_batch_tool_validates_fields(mcp):
     })
     assert "Error" in result
     assert "content" in result
+
+
+# ── Spike 13: Search improvements ───────────────────────────────────
+
+
+@pytest.fixture
+def mcp_with_pool(server_env):
+    """Return (mcp, pool) so tests can insert file-indexed chunks directly."""
+    mcp, pool = create_server(config_path=server_env["config_path"])
+    return mcp, pool
+
+
+@pytest.mark.asyncio
+async def test_search_with_source_filter(mcp):
+    """search_memories with source param should filter by source prefix."""
+    await _call(mcp, "store_memory", {
+        "project": "test",
+        "content": "Session observation about auth patterns",
+        "tags": ["auth"],
+        "source": "session observation",
+    })
+    await _call(mcp, "store_memory", {
+        "project": "test",
+        "content": "Another auth memory from design review",
+        "tags": ["auth"],
+        "source": "design review",
+    })
+
+    result = await _call(mcp, "search_memories", {
+        "project": "test",
+        "query": "auth",
+        "source": "session",
+    })
+    assert "Session observation about auth patterns" in result
+    assert "design review" not in result
+
+
+@pytest.mark.asyncio
+async def test_expand_shows_superseded_by(mcp):
+    """expand_memories text output should show 'Superseded by' for superseded memories."""
+    old_result = await _call(mcp, "store_memory", {
+        "project": "test",
+        "content": "Old decision about database choice",
+        "tags": ["decision"],
+    })
+    old_id = old_result.split("Stored memory ")[-1].strip()
+
+    new_result = await _call(mcp, "store_memory", {
+        "project": "test",
+        "content": "New decision about database choice",
+        "tags": ["decision"],
+        "supersedes": old_id,
+    })
+    new_id = new_result.split("Stored memory ")[1].split(" ")[0]
+
+    expanded = await _call(mcp, "expand_memories", {
+        "project": "test",
+        "memory_ids": [old_id],
+    })
+    assert "Superseded by:" in expanded
+    assert new_id in expanded
+
+
+@pytest.mark.asyncio
+async def test_expand_json_shows_superseded_by(mcp):
+    """expand_memories JSON output should include superseded_by field."""
+    import json
+
+    old_result = await _call(mcp, "store_memory", {
+        "project": "test",
+        "content": "Old auth decision for JSON test",
+        "tags": ["decision"],
+    })
+    old_id = old_result.split("Stored memory ")[-1].strip()
+
+    new_result = await _call(mcp, "store_memory", {
+        "project": "test",
+        "content": "New auth decision for JSON test",
+        "tags": ["decision"],
+        "supersedes": old_id,
+    })
+    new_id = new_result.split("Stored memory ")[1].split(" ")[0]
+
+    expanded = await _call(mcp, "expand_memories", {
+        "project": "test",
+        "memory_ids": [old_id],
+        "output": "json",
+    })
+    data = json.loads(expanded)
+    assert data["results"][0]["superseded_by"] == new_id
+
+
+@pytest.mark.asyncio
+async def test_search_grouped_results_text(mcp_with_pool):
+    """Search with mixed chunk types should show grouped text output."""
+    mcp, pool = mcp_with_pool
+    store = pool.get_store("grouptest")
+
+    # Insert agent memory via tool
+    await _call(mcp, "store_memory", {
+        "project": "grouptest",
+        "content": "Agent memory about authentication patterns",
+        "tags": ["auth"],
+    })
+
+    # Insert file-indexed chunk directly via store
+    store.store(
+        content="File content about authentication setup",
+        tags=["indexed", "docs"],
+        source="file:/tmp/README.md|auth",
+        chunk_type="file-indexed",
+    )
+
+    result = await _call(mcp, "search_memories", {
+        "project": "grouptest",
+        "query": "authentication",
+    })
+    assert "Agent memories" in result
+    assert "File-indexed" in result
+
+
+@pytest.mark.asyncio
+async def test_search_grouped_results_json(mcp_with_pool):
+    """Search with mixed chunk types should show grouped JSON output."""
+    import json
+
+    mcp, pool = mcp_with_pool
+    store = pool.get_store("groupjson")
+
+    await _call(mcp, "store_memory", {
+        "project": "groupjson",
+        "content": "Agent memory about billing integration",
+        "tags": ["billing"],
+    })
+
+    store.store(
+        content="File content about billing configuration",
+        tags=["indexed", "docs"],
+        source="file:/tmp/billing.md",
+        chunk_type="file-indexed",
+    )
+
+    result = await _call(mcp, "search_memories", {
+        "project": "groupjson",
+        "query": "billing",
+        "output": "json",
+    })
+    data = json.loads(result)
+    assert data["meta"]["grouped"] is True
+    assert "agent_memories" in data
+    assert "file_indexed" in data
+    assert len(data["agent_memories"]) >= 1
+    assert len(data["file_indexed"]) >= 1
+
+
+@pytest.mark.asyncio
+async def test_search_single_type_not_grouped(mcp):
+    """Search with only agent-memories should use flat output, not grouped."""
+    import json
+
+    await _call(mcp, "store_memory", {
+        "project": "flattest",
+        "content": "Agent memory about frontend patterns",
+        "tags": ["frontend"],
+    })
+
+    result = await _call(mcp, "search_memories", {
+        "project": "flattest",
+        "query": "frontend patterns",
+        "output": "json",
+    })
+    data = json.loads(result)
+    assert "results" in data
+    assert "agent_memories" not in data
+    assert data["meta"].get("grouped") is not True
+
+
+@pytest.mark.asyncio
+async def test_search_json_includes_hit_count(mcp):
+    """JSON search results should include hit_count and last_accessed_at for agent memories."""
+    import json
+
+    await _call(mcp, "store_memory", {
+        "project": "hitjson",
+        "content": "Memory for hit count JSON test",
+        "tags": ["test"],
+    })
+
+    result = await _call(mcp, "search_memories", {
+        "project": "hitjson",
+        "query": "hit count JSON",
+        "output": "json",
+    })
+    data = json.loads(result)
+    first = data["results"][0]
+    assert "hit_count" in first
+    assert first["hit_count"] >= 1
+    assert "last_accessed_at" in first
+
+
+@pytest.mark.asyncio
+async def test_expand_json_includes_hit_count(mcp):
+    """expand_memories JSON should include hit tracking fields."""
+    import json
+
+    store_result = await _call(mcp, "store_memory", {
+        "project": "hitexpand",
+        "content": "Memory for expand hit count test",
+        "tags": ["test"],
+    })
+    mem_id = store_result.split("Stored memory ")[-1].strip()
+
+    result = await _call(mcp, "expand_memories", {
+        "project": "hitexpand",
+        "memory_ids": [mem_id],
+        "output": "json",
+    })
+    data = json.loads(result)
+    first = data["results"][0]
+    assert "hit_count" in first
+    assert first["hit_count"] >= 1
+    assert "last_accessed_at" in first

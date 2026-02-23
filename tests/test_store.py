@@ -732,3 +732,87 @@ def test_store_batch_empty_list(tmp_data_dir):
     assert result.stored_count == 0
     assert result.skipped_count == 0
     assert result.stored_ids == []
+
+
+# ── Spike 13: Search improvements ───────────────────────────────────
+
+
+def test_search_with_source_prefix(tmp_data_dir):
+    """search with source_prefix should only return memories matching that prefix."""
+    store = make_store(tmp_data_dir, "source_prefix")
+    store.store(content="Session observation about auth", tags=["auth"], source="session observation")
+    store.store(content="File content about auth", tags=["auth"], source="file:/tmp/README.md|auth")
+
+    results = store.search("auth", source_prefix="file:", limit=5)
+    assert len(results) == 1
+    assert results[0]["source"].startswith("file:")
+
+    results = store.search("auth", source_prefix="session", limit=5)
+    assert len(results) == 1
+    assert results[0]["source"].startswith("session")
+
+
+def test_search_hit_tracking_increments(tmp_data_dir):
+    """search should increment hit_count and set last_accessed_at on agent-memory results."""
+    store = make_store(tmp_data_dir, "hit_tracking")
+    store.store(content="Auth uses JWT tokens for all services", tags=["auth"])
+
+    results = store.search("JWT tokens", limit=1)
+    assert len(results) == 1
+    assert results[0]["hit_count"] == 1
+    assert "last_accessed_at" in results[0]
+
+    # Second search should increment
+    results = store.search("JWT tokens", limit=1)
+    assert results[0]["hit_count"] == 2
+
+
+def test_get_by_ids_hit_tracking(tmp_data_dir):
+    """get_by_ids should increment hit_count on agent-memory results."""
+    store = make_store(tmp_data_dir, "hit_get")
+    mem_id = store.store(content="Billing uses Stripe", tags=["billing"])
+
+    results = store.get_by_ids([mem_id])
+    assert results[0]["hit_count"] == 1
+
+    results = store.get_by_ids([mem_id])
+    assert results[0]["hit_count"] == 2
+
+
+def test_hit_tracking_skips_file_indexed(tmp_data_dir):
+    """File-indexed chunks should not get hit tracking metadata."""
+    store = make_store(tmp_data_dir, "hit_skip_file")
+    store.store(
+        content="README content about project setup",
+        tags=["indexed", "docs"],
+        source="file:/tmp/README.md",
+        chunk_type="file-indexed",
+    )
+
+    results = store.search("project setup", limit=1)
+    assert len(results) == 1
+    assert "hit_count" not in results[0]
+    assert "last_accessed_at" not in results[0]
+
+
+def test_stats_includes_stale_counts(tmp_data_dir):
+    """stats should report stale and never-accessed agent memory counts."""
+    from unittest.mock import patch
+    from datetime import datetime, timezone
+
+    store = make_store(tmp_data_dir, "stale_stats")
+
+    # Store a memory, then manually set old last_accessed_at
+    mem_id = store.store(content="Old accessed memory", tags=["test"])
+    old = store._backend.get([mem_id])
+    old_meta = dict(old[0].metadata)
+    old_meta["last_accessed_at"] = "2025-01-01T00:00:00"
+    old_meta["hit_count"] = 1
+    store._backend.update(mem_id, text=None, embedding=None, metadata=old_meta)
+
+    # Store a never-accessed memory
+    store.store(content="Never accessed memory", tags=["test"])
+
+    stats = store.stats()
+    assert stats["stale_count"] == 1
+    assert stats["never_accessed_count"] == 1
