@@ -121,7 +121,7 @@ function commandPalette() {
     },
 
     moveDown() {
-      const max = this.filtered.length; // +1 for search action
+      const max = this.filtered.length;
       if (this.activeIndex < max) this.activeIndex++;
     },
 
@@ -182,11 +182,34 @@ function prependFeedEntry(value, action) {
 
   var entry = document.createElement('div');
   entry.className = 'feed-entry';
-  entry.innerHTML =
-    '<span class="feed-project">' + project + '</span>' +
-    '<span class="feed-dot">&middot;</span>' +
-    '<span class="feed-action feed-action--' + eventType + '">' + action + '</span>' +
-    (detail ? '<span class="feed-dot">&middot;</span><span class="feed-detail">' + detail.substring(0, 80) + '</span>' : '');
+
+  var projSpan = document.createElement('span');
+  projSpan.className = 'feed-project';
+  projSpan.textContent = project;
+  entry.appendChild(projSpan);
+
+  var dot1 = document.createElement('span');
+  dot1.className = 'feed-dot';
+  dot1.textContent = '\u00b7';
+  entry.appendChild(dot1);
+
+  var actionSpan = document.createElement('span');
+  actionSpan.className = 'feed-action feed-action--' + eventType;
+  actionSpan.textContent = action;
+  entry.appendChild(actionSpan);
+
+  if (detail) {
+    var dot2 = document.createElement('span');
+    dot2.className = 'feed-dot';
+    dot2.textContent = '\u00b7';
+    entry.appendChild(dot2);
+
+    var detailSpan = document.createElement('span');
+    detailSpan.className = 'feed-detail';
+    detailSpan.textContent = detail.substring(0, 80);
+    entry.appendChild(detailSpan);
+  }
+
   container.insertBefore(entry, container.firstChild);
 
   // Cap visible entries
