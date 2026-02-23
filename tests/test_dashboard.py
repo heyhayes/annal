@@ -305,3 +305,32 @@ def test_event_bus_pub_sub():
         assert received.project == "test"
     finally:
         event_bus.unsubscribe(q)
+
+
+def test_event_bus_ring_buffer():
+    """EventBus should store recent events in a ring buffer."""
+    from annal.events import EventBus, Event
+
+    bus = EventBus()
+    for i in range(5):
+        bus.push(Event(type="memory_stored", project="proj", detail=f"mem_{i}"))
+
+    history = bus.recent(limit=3)
+    assert len(history) == 3
+    # Most recent first
+    assert history[0].detail == "mem_4"
+    assert history[2].detail == "mem_2"
+
+
+def test_event_bus_ring_buffer_overflow():
+    """Ring buffer should cap at max size, dropping oldest events."""
+    from annal.events import EventBus, Event
+
+    bus = EventBus(history_size=10)
+    for i in range(25):
+        bus.push(Event(type="test", project="p", detail=str(i)))
+
+    history = bus.recent(limit=50)
+    assert len(history) == 10
+    assert history[0].detail == "24"  # most recent
+    assert history[-1].detail == "15"  # oldest retained
