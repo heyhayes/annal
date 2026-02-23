@@ -46,6 +46,8 @@ html {
 body {
   font-family: var(--font-ui);
   background: var(--bg-deep);
+  background-image: radial-gradient(circle, var(--border) 1px, transparent 1px);
+  background-size: 24px 24px;
   color: var(--text-primary);
   line-height: 1.5;
   min-height: 100vh;
@@ -1023,13 +1025,6 @@ a.feed-project:hover {
 
 .breakdown-count {
   color: var(--text-muted);
-}
-
-/* ── Body texture — subtle dot grid ── */
-
-body {
-  background-image: radial-gradient(circle, var(--border) 1px, transparent 1px);
-  background-size: 24px 24px;
 }
 
 /* ── Nav active state ── */
