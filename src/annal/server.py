@@ -155,6 +155,13 @@ The old memory is hidden from search but preserved for audit. If you get a simil
 hint when storing (score 0.80–0.95), consider whether the new memory replaces the
 similar one. Use `include_superseded=True` on search_memories to see replaced memories.
 
+## Pruning stale memories
+
+Use `prune_stale` to review and clean up memories that are no longer being accessed.
+Run with `dry_run=True` (default) first to preview what would be deleted,
+then `dry_run=False` to execute. Targets agent memories only — file-indexed chunks
+are managed by the file watcher.
+
 ## Decision verification
 
 Before accepting, proposing, or implementing a design decision, search annal
@@ -780,6 +787,56 @@ def create_server(
             lines.append(f"  Stale memories (>60d): {stats['stale_count']}")
         if stats.get("never_accessed_count"):
             lines.append(f"  Never accessed: {stats['never_accessed_count']}")
+        return "\n".join(lines)
+
+    @mcp.tool()
+    def prune_stale(
+        project: str,
+        max_age_days: int = 60,
+        include_never_accessed: bool = True,
+        dry_run: bool = True,
+    ) -> str:
+        """Review and delete stale agent memories that are no longer being accessed.
+
+        Args:
+            project: Project name to prune
+            max_age_days: Memories not accessed in this many days are considered stale (default 60)
+            include_never_accessed: Also target memories that have never been accessed (default True)
+            dry_run: If True (default), only report what would be deleted. Set to False to actually delete.
+        """
+        store = pool.get_store(project)
+        result = store.find_stale(
+            max_age_days=max_age_days,
+            include_never_accessed=include_never_accessed,
+        )
+
+        stale_count = result["stale_count"]
+        never_count = result["never_accessed_count"]
+        total = stale_count + never_count
+
+        if total == 0:
+            return f"[{project}] No stale memories found."
+
+        if dry_run:
+            lines = [f"[{project}] Stale memory review (dry_run=True):"]
+            lines.append(f"  Stale (>{max_age_days}d): {stale_count} memories")
+            if include_never_accessed:
+                lines.append(f"  Never accessed: {never_count} memories")
+            lines.append(f"  Total candidates: {total}")
+            lines.append("")
+            lines.append("Set dry_run=False to delete these memories.")
+            return "\n".join(lines)
+
+        # Actually delete
+        all_ids = result["stale_ids"] + result["never_accessed_ids"]
+        store.delete_many(all_ids)
+        for mem_id in all_ids:
+            event_bus.push(Event(type="memory_deleted", project=project, detail=mem_id))
+
+        lines = [f"[{project}] Pruned {total} stale memories:"]
+        lines.append(f"  Stale (>{max_age_days}d): {stale_count} deleted")
+        if include_never_accessed:
+            lines.append(f"  Never accessed: {never_count} deleted")
         return "\n".join(lines)
 
     return mcp, pool

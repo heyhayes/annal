@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import math
 import queue
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from starlette.requests import Request
@@ -19,6 +20,17 @@ from annal.pool import StorePool
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 
 PAGE_SIZE = 50
+
+
+def _annotate_stale(memories: list[dict], max_age_days: int = 60) -> None:
+    """Mark each memory dict with a 'stale' boolean for template rendering."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=max_age_days)).isoformat()
+    for mem in memories:
+        if mem.get("chunk_type") != "agent-memory":
+            mem["stale"] = False
+            continue
+        last = mem.get("last_accessed_at")
+        mem["stale"] = last is None or last < cutoff
 
 
 def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
@@ -38,6 +50,8 @@ def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
                 "file_indexed": stats["by_type"].get("file-indexed", 0),
                 "agent_memory": stats["by_type"].get("agent-memory", 0),
                 "top_tags": top_tags,
+                "stale": stats.get("stale_count", 0),
+                "never_accessed": stats.get("never_accessed_count", 0),
             })
         return templates.TemplateResponse(request, "index.html", {
             "project_stats": project_stats,
@@ -58,6 +72,7 @@ def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
             page = 1
         q = params.get("q", "")
         superseded = params.get("superseded", "") == "1"
+        stale = params.get("stale", "")
         return {
             "project": project,
             "projects": projects,
@@ -68,6 +83,7 @@ def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
             "page": page,
             "q": q,
             "include_superseded": superseded,
+            "stale": stale,
         }
 
     def _fetch_memories(pool: StorePool, params: dict) -> dict:
@@ -77,7 +93,16 @@ def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
         page = params["page"]
         offset = (page - 1) * PAGE_SIZE
 
-        if params["q"]:
+        if params.get("stale") == "1" and not params["q"]:
+            # Stale filter: get all stale IDs, paginate manually
+            stale_result = store.find_stale()
+            all_ids = stale_result["stale_ids"] + stale_result["never_accessed_ids"]
+            total = len(all_ids)
+            total_pages = max(1, math.ceil(total / PAGE_SIZE))
+            page_ids = all_ids[offset:offset + PAGE_SIZE]
+            memories = store.get_by_ids(page_ids) if page_ids else []
+            _annotate_stale(memories)
+        elif params["q"]:
             # Search mode: semantic search, then apply filters client-side
             results = store.search(
                 query=params["q"],
@@ -88,6 +113,7 @@ def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
             total = len(results)
             memories = results
             total_pages = 1  # search doesn't paginate
+            _annotate_stale(memories)
         else:
             memories, total = store.browse(
                 offset=offset,
@@ -98,6 +124,7 @@ def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
                 include_superseded=params.get("include_superseded", False),
             )
             total_pages = max(1, math.ceil(total / PAGE_SIZE))
+            _annotate_stale(memories)
 
         return {
             "memories": memories,
@@ -111,6 +138,7 @@ def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
             "tags": ",".join(params["tags"]) if params["tags"] else "",
             "q": params["q"],
             "superseded": "1" if params.get("include_superseded") else "",
+            "stale": params.get("stale", ""),
         }
 
     def _fetch_cross_project(pool: StorePool, params: dict) -> dict:
@@ -129,6 +157,7 @@ def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
             # Sort by distance (lower = more similar) if present, else keep order
             all_results.sort(key=lambda m: m.get("distance", 1.0))
             all_results = all_results[:PAGE_SIZE]
+        _annotate_stale(all_results)
         return {
             "memories": all_results,
             "project": "",
@@ -141,6 +170,7 @@ def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
             "tags": ",".join(tags) if tags else "",
             "q": query,
             "superseded": "1" if include_superseded else "",
+            "stale": "",
         }
 
     async def memories(request: Request) -> Response:
@@ -225,6 +255,7 @@ def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
             limit = int(form.get("limit", str(PAGE_SIZE)))
             store = pool.get_store(project)
             results = store.search(query=query, tags=tags, limit=limit, include_superseded=include_superseded)
+            _annotate_stale(results)
             ctx = {
                 "memories": results,
                 "project": project,
@@ -237,6 +268,7 @@ def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
                 "tags": tags_raw,
                 "q": query,
                 "superseded": "1" if include_superseded else "",
+                "stale": "",
             }
         return templates.TemplateResponse(request, "_table.html", ctx)
 

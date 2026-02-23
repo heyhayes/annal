@@ -505,6 +505,27 @@ body {
   margin-left: 0.4rem;
 }
 
+.stale-badge {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+  background: rgba(240, 180, 41, 0.15);
+  color: var(--accent);
+  border: 1px solid rgba(240, 180, 41, 0.3);
+  margin-left: 0.4rem;
+}
+
+.stale-link {
+  color: var(--accent);
+  text-decoration: none;
+  font-family: var(--font-mono);
+}
+
+.stale-link:hover {
+  text-decoration: underline;
+}
+
 .col-check {
   width: 32px;
   text-align: center;

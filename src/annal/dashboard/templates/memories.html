@@ -58,6 +58,18 @@
              hx-vals='{"page": "1"}'>
       Show superseded
     </label>
+
+    <label class="filter-checkbox">
+      <input type="checkbox"
+             name="stale"
+             value="1"
+             {% if stale == "1" %}checked{% endif %}
+             hx-get="/memories/table"
+             hx-target="#memory-table"
+             hx-include="[name]"
+             hx-vals='{"page": "1"}'>
+      Show stale only
+    </label>
   </div>
 
   <div class="search-controls">

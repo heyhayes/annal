@@ -1348,6 +1348,80 @@ async def test_search_json_includes_hit_count(mcp):
     assert "last_accessed_at" in first
 
 
+# ── Spike 14: Stale memory management ───────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_prune_stale_dry_run(mcp):
+    """prune_stale with dry_run=True returns summary without deleting."""
+    # Store a memory, then never access it — it becomes "never accessed"
+    await _call(mcp, "store_memory", {
+        "project": "prunetest",
+        "content": "Memory that will never be accessed for prune test",
+        "tags": ["test"],
+    })
+
+    result = await _call(mcp, "prune_stale", {
+        "project": "prunetest",
+        "dry_run": True,
+    })
+    assert "dry_run=True" in result
+    assert "Never accessed: 1" in result
+    assert "Total candidates: 1" in result
+
+    # Verify memory still exists
+    search = await _call(mcp, "search_memories", {
+        "project": "prunetest",
+        "query": "prune test",
+    })
+    assert "never be accessed" in search
+
+
+@pytest.mark.asyncio
+async def test_prune_stale_deletes(mcp):
+    """prune_stale with dry_run=False actually deletes stale memories."""
+    await _call(mcp, "store_memory", {
+        "project": "prunedelete",
+        "content": "Memory to be pruned by stale cleanup",
+        "tags": ["test"],
+    })
+
+    result = await _call(mcp, "prune_stale", {
+        "project": "prunedelete",
+        "dry_run": False,
+    })
+    assert "Pruned 1" in result
+    assert "Never accessed: 1 deleted" in result
+
+    # Verify memory is gone
+    search = await _call(mcp, "search_memories", {
+        "project": "prunedelete",
+        "query": "pruned by stale",
+    })
+    assert "No matching memories" in search
+
+
+@pytest.mark.asyncio
+async def test_prune_stale_skips_file_indexed(mcp_with_pool):
+    """File-indexed chunks should not be pruned."""
+    mcp, pool = mcp_with_pool
+    store = pool.get_store("prunefile")
+
+    # Insert file-indexed chunk directly
+    store.store(
+        content="File content that should survive pruning",
+        tags=["indexed", "docs"],
+        source="file:/tmp/README.md",
+        chunk_type="file-indexed",
+    )
+
+    result = await _call(mcp, "prune_stale", {
+        "project": "prunefile",
+        "dry_run": True,
+    })
+    assert "No stale memories" in result
+
+
 @pytest.mark.asyncio
 async def test_expand_json_includes_hit_count(mcp):
     """expand_memories JSON should include hit tracking fields."""
