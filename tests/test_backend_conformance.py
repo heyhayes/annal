@@ -62,10 +62,8 @@ def qdrant_backend(embedder):
         )),
     ]
 )
-def backend(request, chromadb_backend, qdrant_backend):
-    if request.param == "chromadb":
-        return chromadb_backend
-    return qdrant_backend
+def backend(request):
+    return request.getfixturevalue(f"{request.param}_backend")
 
 
 # --- Shared conformance tests ---
