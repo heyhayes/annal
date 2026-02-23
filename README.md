@@ -2,7 +2,7 @@
 
 *A tool built by tools, for tools.*
 
-> Early stage — this project is under active development and not yet ready for production use. APIs, config formats, and storage schemas may change without notice. If you're curious, feel free to explore and open issues, but expect rough edges.
+> Alpha — actively developed and used in production by the author across multiple projects. APIs and storage schemas are stabilising but may still change between minor versions. Bug reports and feedback welcome via [issues](https://github.com/heyhayes/annal/issues).
 
 Semantic memory server for AI agent teams. Stores, searches, and retrieves knowledge across sessions using pluggable vector backends (ChromaDB or Qdrant) with local ONNX embeddings, exposed as an MCP server.
 
@@ -271,40 +271,9 @@ When running as an HTTP daemon, the dashboard is available at `http://localhost:
 
 Disable with `--no-dashboard` if not needed.
 
-## Roadmap
+## Changelog
 
-### 0.1.0 — Foundation (shipped)
-Core memory store, semantic search, file indexing, MCP server, web dashboard, one-shot install.
-
-### 0.2.0 — Operational Readiness (shipped)
-Async indexing, thread safety, index_status diagnostics, mtime cache performance, optional file watching.
-
-### 0.3.0 — Search & Retrieval (shipped)
-Temporal filtering, structured JSON output, heading context in embeddings.
-
-### 0.4.0 — Bug Sweep + Features (shipped)
-Six bug fixes (date filter, dual config, startup lock, pool lock safety, browse pagination, config I/O under lock). Fuzzy tag matching via ONNX embeddings. Cross-project search with fan-out and score-based merge.
-
-### 0.5.0 — Stress-Test Bug Sweep (shipped)
-Seven fixes from stress testing: min_score no longer masks fuzzy tag matches, cross-project search always includes primary project, empty parent heading chunks skipped, invalid dates raise errors instead of silently returning empty, dedup checks all agent-memory candidates, daemon threads joined on shutdown, fuzzy tag threshold lowered to 0.72.
-
-### 0.6.0 — Vector Backend Abstraction + Qdrant (shipped)
-VectorBackend protocol with pluggable backends. ChromaDB extracted behind protocol. QdrantBackend with native tag filtering, hybrid BM25+vector search via RRF, deterministic UUID mapping. Config-driven backend selection. Migration CLI (`annal migrate`).
-
-### 0.6.1 — Retag + Dashboard UX (shipped)
-`retag_memory` tool for incremental tag editing. Dashboard improvements: project overview table, clickable tag pills, cross-project search. Search default mode changed from `full` to `summary`.
-
-### 0.6.2 — Hardening + Export/Import (shipped)
-Export/import CLI (`annal export`, `annal import`) for JSONL-based backup and restore. Bug fixes for dedup, tag normalization, and startup reconciliation. Backend conformance improvements.
-
-### 0.6.3 — Memory Supersession (shipped)
-`supersedes` parameter on `store_memory` marks old memories as replaced. Superseded memories hidden from search/browse by default, visible with `include_superseded=True`. `$not_exists` post-filter operator for both backends. Similarity hints (0.80-0.95) suggest supersession to agents. Dashboard "Show superseded" toggle. Backend conformance test suite extracted into parametrized shared tests.
-
-### 0.7.0 — Search Improvements & Stale Memory Management (shipped)
-`store_batch` tool for efficient multi-memory storage. Hit tracking on agent memories — `search_memories`, `expand_memories`, and `get_by_ids` record `hit_count` and `last_accessed_at`. Overfetch cap on tag-filtered searches to bound post-filter work. `prune_stale` tool for reviewing and deleting memories that haven't been accessed in a configurable number of days (dry-run by default). `index_status` now reports stale and never-accessed memory counts. Dashboard stale column on project overview, "Show stale only" filter on the memories page, and stale/never-accessed badges on memory rows. GitHub Actions CI and PyPI publish workflows.
-
-### Future
-Proactive context injection. Memory relationships beyond supersession.
+See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 ## Development
 
