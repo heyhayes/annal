@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "annal"
-version = "0.7.0"
+version = "0.7.1"
 description = "Semantic memory server for AI agent teams"
 readme = "README.md"
 license = "MIT"
