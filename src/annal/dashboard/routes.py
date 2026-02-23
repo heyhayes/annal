@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, Response, StreamingResponse
+from starlette.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from starlette.routing import Route
 from starlette.templating import Jinja2Templates
 
@@ -325,6 +325,22 @@ def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
         ctx = _fetch_memories(pool, params)
         return templates.TemplateResponse(request, "_table.html", ctx)
 
+    async def api_projects(request: Request) -> Response:
+        """JSON list of non-empty projects for command palette."""
+        projects = []
+        for name in sorted(config.projects):
+            store = pool.get_store(name)
+            stats = store.stats()
+            if stats["total"] == 0:
+                continue
+            projects.append({
+                "name": name,
+                "total": stats["total"],
+                "agent_memory": stats["by_type"].get("agent-memory", 0),
+                "file_indexed": stats["by_type"].get("file-indexed", 0),
+            })
+        return JSONResponse(projects)
+
     async def events(request: Request) -> Response:
         """SSE endpoint for live dashboard updates."""
         q = event_bus.subscribe()
@@ -355,6 +371,7 @@ def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
 
     return [
         Route("/", index),
+        Route("/api/projects", api_projects),
         Route("/memories", memories),
         Route("/memories/table", memories_table),
         Route("/memories/bulk-delete", bulk_delete, methods=["POST"]),

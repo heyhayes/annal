@@ -334,3 +334,41 @@ def test_event_bus_ring_buffer_overflow():
     assert len(history) == 10
     assert history[0].detail == "24"  # most recent
     assert history[-1].detail == "15"  # oldest retained
+
+
+def test_api_projects(dashboard_client):
+    """GET /api/projects returns JSON list of non-empty projects."""
+    response = dashboard_client.get("/api/projects")
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)
+    assert len(data) == 1  # testproj has 3 memories
+    proj = data[0]
+    assert proj["name"] == "testproj"
+    assert proj["total"] == 3
+    assert proj["agent_memory"] == 2
+    assert proj["file_indexed"] == 1
+
+
+def test_api_projects_excludes_empty(tmp_data_dir, tmp_config_path):
+    """GET /api/projects excludes projects with zero memories."""
+    from annal.config import AnnalConfig, ProjectConfig
+    from annal.dashboard import create_dashboard_app
+    from annal.pool import StorePool
+    from starlette.testclient import TestClient
+
+    config = AnnalConfig(
+        config_path=tmp_config_path,
+        data_dir=tmp_data_dir,
+        projects={"empty": ProjectConfig(), "nonempty": ProjectConfig()},
+    )
+    config.save()
+    pool = StorePool(config)
+    pool.get_store("nonempty").store("something", tags=["test"], source="test")
+    app = create_dashboard_app(pool, config)
+    client = TestClient(app)
+
+    data = client.get("/api/projects").json()
+    names = [p["name"] for p in data]
+    assert "nonempty" in names
+    assert "empty" not in names
