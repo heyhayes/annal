@@ -1352,14 +1352,25 @@ async def test_search_json_includes_hit_count(mcp):
 
 
 @pytest.mark.asyncio
-async def test_prune_stale_dry_run(mcp):
+async def test_prune_stale_dry_run(mcp_with_pool):
     """prune_stale with dry_run=True returns summary without deleting."""
-    # Store a memory, then never access it — it becomes "never accessed"
+    from datetime import datetime, timezone, timedelta
+    mcp, pool = mcp_with_pool
+
+    # Store a memory, then backdate it so it qualifies as stale
     await _call(mcp, "store_memory", {
         "project": "prunetest",
         "content": "Memory that will never be accessed for prune test",
         "tags": ["test"],
     })
+    store = pool.get_store("prunetest")
+    mems, _ = store.browse()
+    old_date = (datetime.now(timezone.utc) - timedelta(days=90)).isoformat()
+    for m in mems:
+        rec = store._backend.get([m["id"]])
+        meta = dict(rec[0].metadata)
+        meta["created_at"] = old_date
+        store._backend.update(m["id"], text=None, embedding=None, metadata=meta)
 
     result = await _call(mcp, "prune_stale", {
         "project": "prunetest",
@@ -1378,13 +1389,24 @@ async def test_prune_stale_dry_run(mcp):
 
 
 @pytest.mark.asyncio
-async def test_prune_stale_deletes(mcp):
+async def test_prune_stale_deletes(mcp_with_pool):
     """prune_stale with dry_run=False actually deletes stale memories."""
+    from datetime import datetime, timezone, timedelta
+    mcp, pool = mcp_with_pool
+
     await _call(mcp, "store_memory", {
         "project": "prunedelete",
         "content": "Memory to be pruned by stale cleanup",
         "tags": ["test"],
     })
+    store = pool.get_store("prunedelete")
+    mems, _ = store.browse()
+    old_date = (datetime.now(timezone.utc) - timedelta(days=90)).isoformat()
+    for m in mems:
+        rec = store._backend.get([m["id"]])
+        meta = dict(rec[0].metadata)
+        meta["created_at"] = old_date
+        store._backend.update(m["id"], text=None, embedding=None, metadata=meta)
 
     result = await _call(mcp, "prune_stale", {
         "project": "prunedelete",

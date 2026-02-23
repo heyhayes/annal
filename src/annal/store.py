@@ -514,7 +514,9 @@ class MemoryStore:
             last_accessed = meta.get("last_accessed_at")
             if last_accessed is None:
                 if include_never_accessed:
-                    never_accessed_ids.append(doc_id)
+                    created = meta.get("created_at", "")
+                    if created and created < cutoff:
+                        never_accessed_ids.append(doc_id)
             elif last_accessed < cutoff:
                 stale_ids.append(doc_id)
 

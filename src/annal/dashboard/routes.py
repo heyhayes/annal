@@ -30,7 +30,11 @@ def _annotate_stale(memories: list[dict], max_age_days: int = 60) -> None:
             mem["stale"] = False
             continue
         last = mem.get("last_accessed_at")
-        mem["stale"] = last is None or last < cutoff
+        if last is None:
+            created = mem.get("created_at", "")
+            mem["stale"] = bool(created and created < cutoff)
+        else:
+            mem["stale"] = last < cutoff
 
 
 def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
