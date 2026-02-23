@@ -155,7 +155,9 @@ Every tool takes a `project` parameter. Use the directory name of the codebase y
 
 `store_memory` — Store knowledge with tags and source attribution. Near-duplicates (>95% similarity) are automatically skipped. When a similar memory is found (80-95% similarity), a hint suggests using the `supersedes` parameter to replace it. Pass `supersedes=<old_id>` to mark the old memory as replaced — it drops out of search but remains for audit.
 
-`search_memories` — Natural language search with optional tag filtering and similarity scores. Three output modes: `mode="summary"` (default) returns first 200 chars with metadata, `mode="probe"` returns compact one-line summaries for scanning large result sets, and `mode="full"` returns complete content. Optional `min_score` filter suppresses low-relevance noise. Tags use fuzzy matching (semantic similarity) so `tags=["auth"]` finds memories tagged `authentication`. Temporal filtering with `after` and `before` (ISO 8601 dates) scopes results by creation date. Optional `projects` parameter enables cross-project search (`projects="*"` searches all configured projects). Pass `include_superseded=True` to surface replaced memories.
+`store_batch` — Store multiple memories in a single call. Each item takes the same fields as `store_memory` (`content`, `tags`, `source`, `supersedes`). More efficient than repeated `store_memory` when storing 2+ memories at once.
+
+`search_memories` — Natural language search with optional tag filtering and similarity scores. Three output modes: `mode="summary"` (default) returns first 200 chars with metadata, `mode="probe"` returns compact one-line summaries for scanning large result sets, and `mode="full"` returns complete content. Optional `min_score` filter suppresses low-relevance noise. Tags use fuzzy matching (semantic similarity) so `tags=["auth"]` finds memories tagged `authentication`. Temporal filtering with `after` and `before` (ISO 8601 dates) scopes results by creation date. Optional `projects` parameter enables cross-project search (`projects="*"` searches all configured projects). Pass `include_superseded=True` to surface replaced memories. Returned results include `hit_count` and `last_accessed_at` for access tracking.
 
 `expand_memories` — Retrieve full content for specific memory IDs. Use after a probe search to fetch details for relevant results.
 
@@ -165,13 +167,15 @@ Every tool takes a `project` parameter. Use the directory name of the codebase y
 
 `delete_memory` — Remove a specific memory by ID.
 
+`prune_stale` — Review and delete stale agent memories. Identifies memories with `last_accessed_at` older than `max_age_days` (default 60) and optionally those never accessed. Runs in `dry_run=True` mode by default, returning a summary of what would be deleted. Set `dry_run=False` to execute deletion. Only targets agent memories — file-indexed chunks are managed by the file watcher.
+
 `list_topics` — Show all tags and their frequency counts.
 
 `init_project` — Register a project with watch paths, patterns, and exclusions for file indexing. Indexing starts in the background and returns immediately.
 
 `index_files` — Full re-index: clears all file-indexed chunks and re-indexes from scratch. Use after changing exclude patterns to remove stale chunks.
 
-`index_status` — Per-project diagnostics: total chunks, file-indexed vs agent memory counts, indexing state with elapsed time, and last reconcile timestamp.
+`index_status` — Per-project diagnostics: total chunks, file-indexed vs agent memory counts, stale and never-accessed memory counts, indexing state with elapsed time, and last reconcile timestamp.
 
 ## Configuration
 
@@ -263,7 +267,7 @@ Start-ScheduledTask -TaskName "Annal MCP Server"
 
 ## Dashboard
 
-When running as an HTTP daemon, the dashboard is available at `http://localhost:9200`. It provides memory browsing with pagination and filters (by type, source, tags), semantic search with cross-project support, expandable content previews, bulk delete by selection or filter, a "Show superseded" toggle for viewing replaced memories, and live SSE updates when memories are stored, deleted, or indexing is in progress. Clickable tag pills in the table jump to filtered views.
+When running as an HTTP daemon, the dashboard is available at `http://localhost:9200`. It provides memory browsing with pagination and filters (by type, source, tags), semantic search with cross-project support, expandable content previews, bulk delete by selection or filter, a "Show superseded" toggle for viewing replaced memories, a "Show stale only" filter that surfaces memories that haven't been accessed in 60+ days or were never accessed, and live SSE updates when memories are stored, deleted, or indexing is in progress. Clickable tag pills in the table jump to filtered views. The project overview table shows stale memory counts per project with links to the filtered view.
 
 Disable with `--no-dashboard` if not needed.
 
@@ -296,6 +300,9 @@ Export/import CLI (`annal export`, `annal import`) for JSONL-based backup and re
 ### 0.6.3 — Memory Supersession (shipped)
 `supersedes` parameter on `store_memory` marks old memories as replaced. Superseded memories hidden from search/browse by default, visible with `include_superseded=True`. `$not_exists` post-filter operator for both backends. Similarity hints (0.80-0.95) suggest supersession to agents. Dashboard "Show superseded" toggle. Backend conformance test suite extracted into parametrized shared tests.
 
+### 0.7.0 — Search Improvements & Stale Memory Management (shipped)
+`store_batch` tool for efficient multi-memory storage. Hit tracking on agent memories — `search_memories`, `expand_memories`, and `get_by_ids` record `hit_count` and `last_accessed_at`. Overfetch cap on tag-filtered searches to bound post-filter work. `prune_stale` tool for reviewing and deleting memories that haven't been accessed in a configurable number of days (dry-run by default). `index_status` now reports stale and never-accessed memory counts. Dashboard stale column on project overview, "Show stale only" filter on the memories page, and stale/never-accessed badges on memory rows. GitHub Actions CI and PyPI publish workflows.
+
 ### Future
 Proactive context injection. Memory relationships beyond supersession.
 
@@ -306,7 +313,7 @@ pip install -e ".[dev]"
 pytest -v
 ```
 
-227 tests cover store operations, search, supersession, indexing, file watching, dashboard routes, SSE events, CLI installation, export/import, migration, and a shared backend conformance suite that runs against both ChromaDB and Qdrant.
+266 tests cover store operations, search, hit tracking, stale detection, supersession, batch storage, indexing, file watching, dashboard routes, SSE events, CLI installation, export/import, migration, and a shared backend conformance suite that runs against both ChromaDB and Qdrant.
 
 ## License
 
