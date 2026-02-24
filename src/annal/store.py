@@ -519,7 +519,9 @@ class MemoryStore:
             last_accessed = meta.get("last_accessed_at")
             if last_accessed is None:
                 if include_never_accessed:
-                    never_accessed_ids.append(doc_id)
+                    created = meta.get("created_at", "")
+                    if created and created < cutoff:
+                        never_accessed_ids.append(doc_id)
             elif last_accessed < cutoff:
                 stale_ids.append(doc_id)
 
@@ -552,7 +554,9 @@ class MemoryStore:
             if chunk_type == "agent-memory":
                 last_accessed = meta.get("last_accessed_at")
                 if last_accessed is None:
-                    never_accessed_count += 1
+                    created = meta.get("created_at", "")
+                    if created and created < stale_cutoff:
+                        never_accessed_count += 1
                 elif last_accessed < stale_cutoff:
                     stale_count += 1
 

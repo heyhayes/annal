@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, Response, StreamingResponse
+from starlette.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from starlette.routing import Route
 from starlette.templating import Jinja2Templates
 
@@ -30,14 +30,49 @@ def _annotate_stale(memories: list[dict], max_age_days: int = 60) -> None:
             mem["stale"] = False
             continue
         last = mem.get("last_accessed_at")
-        mem["stale"] = last is None or last < cutoff
+        if last is None:
+            created = mem.get("created_at", "")
+            mem["stale"] = bool(created and created < cutoff)
+        else:
+            mem["stale"] = last < cutoff
 
 
 def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
     """Create dashboard route list with access to the store pool and config."""
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
-    async def index(request: Request) -> Response:
+    async def dashboard(request: Request) -> Response:
+        """System dashboard landing page."""
+        total_memories = 0
+        total_agent = 0
+        total_stale = 0
+        non_empty_projects = 0
+
+        for name in sorted(config.projects):
+            store = pool.get_store(name)
+            stats = store.stats()
+            if stats["total"] == 0:
+                continue
+            non_empty_projects += 1
+            total_memories += stats["total"]
+            total_agent += stats["by_type"].get("agent-memory", 0)
+            total_stale += stats.get("stale_count", 0) + stats.get("never_accessed_count", 0)
+
+        # Check if any project is currently indexing
+        indexing = any(pool.is_indexing(name) for name in config.projects)
+
+        recent_events = event_bus.recent(limit=20)
+
+        return templates.TemplateResponse(request, "dashboard.html", {
+            "total_memories": total_memories,
+            "total_projects": non_empty_projects,
+            "total_agent": total_agent,
+            "total_stale": total_stale,
+            "indexing": indexing,
+            "recent_events": recent_events,
+        })
+
+    async def projects_page(request: Request) -> Response:
         """Project overview with stats cards."""
         project_stats = []
         for name in sorted(config.projects):
@@ -321,6 +356,23 @@ def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
         ctx = _fetch_memories(pool, params)
         return templates.TemplateResponse(request, "_table.html", ctx)
 
+    async def api_projects(request: Request) -> Response:
+        """JSON list of non-empty projects for command palette."""
+        projects = []
+        for name in sorted(config.projects):
+            store = pool.get_store(name)
+            stats = store.stats()
+            if stats["total"] == 0:
+                continue
+            projects.append({
+                "name": name,
+                "total": stats["total"],
+                "agent_memory": stats["by_type"].get("agent-memory", 0),
+                "file_indexed": stats["by_type"].get("file-indexed", 0),
+                "stale": stats.get("stale_count", 0) + stats.get("never_accessed_count", 0),
+            })
+        return JSONResponse(projects)
+
     async def events(request: Request) -> Response:
         """SSE endpoint for live dashboard updates."""
         q = event_bus.subscribe()
@@ -335,7 +387,7 @@ def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
                         )
                         safe_project = event.project.replace("\n", " ")
                         safe_detail = event.detail.replace("\n", " ")
-                        yield f"event: {event.type}\ndata: {safe_project}|{safe_detail}\n\n"
+                        yield f"event: {event.type}\ndata: {safe_project}|{safe_detail}|{event.created_at}\n\n"
                     except queue.Empty:
                         # Timeout — send keepalive comment
                         yield ": keepalive\n\n"
@@ -350,7 +402,9 @@ def create_routes(pool: StorePool, config: AnnalConfig) -> list[Route]:
         })
 
     return [
-        Route("/", index),
+        Route("/", dashboard),
+        Route("/projects", projects_page),
+        Route("/api/projects", api_projects),
         Route("/memories", memories),
         Route("/memories/table", memories_table),
         Route("/memories/bulk-delete", bulk_delete, methods=["POST"]),

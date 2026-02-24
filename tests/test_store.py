@@ -810,8 +810,11 @@ def test_stats_includes_stale_counts(tmp_data_dir):
     old_meta["hit_count"] = 1
     store._backend.update(mem_id, text=None, embedding=None, metadata=old_meta)
 
-    # Store a never-accessed memory
-    store.store(content="Never accessed memory", tags=["test"])
+    # Store a never-accessed memory with old created_at
+    never_id = store.store(content="Never accessed memory", tags=["test"])
+    never_meta = dict(store._backend.get([never_id])[0].metadata)
+    never_meta["created_at"] = "2025-01-01T00:00:00"
+    store._backend.update(never_id, text=None, embedding=None, metadata=never_meta)
 
     stats = store.stats()
     assert stats["stale_count"] == 1
@@ -848,8 +851,14 @@ def test_find_stale_excludes_file_indexed(tmp_data_dir):
         source="file:/tmp/README.md",
         chunk_type="file-indexed",
     )
-    # Also store a never-accessed agent memory for comparison
-    store.store(content="Agent memory", tags=["test"])
+    # Store an agent memory and backdate it so it qualifies as never-accessed
+    from datetime import datetime, timezone, timedelta
+    old_date = (datetime.now(timezone.utc) - timedelta(days=90)).isoformat()
+    mem_id = store.store(content="Agent memory", tags=["test"])
+    rec = store._backend.get([mem_id])
+    meta = dict(rec[0].metadata)
+    meta["created_at"] = old_date
+    store._backend.update(mem_id, text=None, embedding=None, metadata=meta)
 
     result = store.find_stale()
     all_ids = result["stale_ids"] + result["never_accessed_ids"]
@@ -861,9 +870,19 @@ def test_find_stale_excludes_file_indexed(tmp_data_dir):
 
 def test_find_stale_excludes_superseded(tmp_data_dir):
     """Superseded memories should not appear in stale results."""
+    from datetime import datetime, timezone, timedelta
+    old_date = (datetime.now(timezone.utc) - timedelta(days=90)).isoformat()
+
     store = make_store(tmp_data_dir, "find_stale_superseded")
     old_id = store.store(content="Old decision", tags=["decision"])
-    store.store(content="New decision", tags=["decision"], supersedes=old_id)
+    new_id = store.store(content="New decision", tags=["decision"], supersedes=old_id)
+
+    # Backdate both so they're old enough to qualify
+    for mid in [old_id, new_id]:
+        rec = store._backend.get([mid])
+        meta = dict(rec[0].metadata)
+        meta["created_at"] = old_date
+        store._backend.update(mid, text=None, embedding=None, metadata=meta)
 
     result = store.find_stale()
     assert old_id not in result["stale_ids"]
@@ -897,14 +916,34 @@ def test_find_stale_respects_max_age_days(tmp_data_dir):
 
 def test_find_stale_never_accessed_flag(tmp_data_dir):
     """include_never_accessed=False should exclude never-accessed memories."""
+    from datetime import datetime, timezone, timedelta
+    old_date = (datetime.now(timezone.utc) - timedelta(days=90)).isoformat()
+
     store = make_store(tmp_data_dir, "find_stale_flag")
-    store.store(content="Never accessed memory", tags=["test"])
+    mem_id = store.store(content="Never accessed memory", tags=["test"])
+
+    # Backdate so it's old enough to qualify as never-accessed
+    rec = store._backend.get([mem_id])
+    meta = dict(rec[0].metadata)
+    meta["created_at"] = old_date
+    store._backend.update(mem_id, text=None, embedding=None, metadata=meta)
 
     result_with = store.find_stale(include_never_accessed=True)
     assert result_with["never_accessed_count"] == 1
 
     result_without = store.find_stale(include_never_accessed=False)
     assert result_without["never_accessed_count"] == 0
+
+
+def test_find_stale_ignores_recently_created_never_accessed(tmp_data_dir):
+    """Never-accessed memories created within max_age_days should not be stale."""
+    store = make_store(tmp_data_dir, "find_stale_recent")
+    store.store(content="Brand new memory", tags=["test"])
+
+    # Freshly created, never accessed — should NOT be stale
+    result = store.find_stale(max_age_days=60)
+    assert result["never_accessed_count"] == 0
+    assert result["stale_count"] == 0
 
 
 def test_agent_memory_boost_over_file_indexed(tmp_data_dir):

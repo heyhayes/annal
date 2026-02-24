@@ -82,17 +82,17 @@ def dashboard_with_pool(tmp_data_dir, tmp_config_path):
     return TestClient(app), pool
 
 
-def test_index_page(dashboard_client):
-    response = dashboard_client.get("/")
+def test_projects_page_with_data(dashboard_client):
+    response = dashboard_client.get("/projects")
     assert response.status_code == 200
     html = response.text
     assert "testproj" in html
-    # The index page shows total count and per-type counts
+    # The projects page shows total count and per-type counts
     assert "3" in html  # total memories
 
 
-def test_index_page_no_projects(empty_dashboard_client):
-    response = empty_dashboard_client.get("/")
+def test_projects_page_empty(empty_dashboard_client):
+    response = empty_dashboard_client.get("/projects")
     assert response.status_code == 200
     html = response.text
     assert "No projects configured yet" in html
@@ -254,7 +254,7 @@ def test_sse_endpoint_streams_events(dashboard_client):
 
             for chunk in response.iter_text():
                 assert "event: memory_stored" in chunk
-                assert "data: test|id123" in chunk
+                assert "data: test|id123|" in chunk
                 break
     finally:
         server.should_exit = True
@@ -287,8 +287,8 @@ def test_event_bus_thread_safety():
     assert errors == [], f"Thread safety errors: {errors}"
 
 
-def test_index_page_has_sse_connection(dashboard_client):
-    """The index page should include SSE connection for live updates."""
+def test_dashboard_has_sse_connection(dashboard_client):
+    """The dashboard page should include SSE connection for live updates."""
     response = dashboard_client.get("/")
     assert response.status_code == 200
     html = response.text
@@ -305,3 +305,103 @@ def test_event_bus_pub_sub():
         assert received.project == "test"
     finally:
         event_bus.unsubscribe(q)
+
+
+def test_event_bus_ring_buffer():
+    """EventBus should store recent events in a ring buffer."""
+    from annal.events import EventBus, Event
+
+    bus = EventBus()
+    for i in range(5):
+        bus.push(Event(type="memory_stored", project="proj", detail=f"mem_{i}"))
+
+    history = bus.recent(limit=3)
+    assert len(history) == 3
+    # Most recent first
+    assert history[0].detail == "mem_4"
+    assert history[2].detail == "mem_2"
+
+
+def test_event_bus_ring_buffer_overflow():
+    """Ring buffer should cap at max size, dropping oldest events."""
+    from annal.events import EventBus, Event
+
+    bus = EventBus(history_size=10)
+    for i in range(25):
+        bus.push(Event(type="test", project="p", detail=str(i)))
+
+    history = bus.recent(limit=50)
+    assert len(history) == 10
+    assert history[0].detail == "24"  # most recent
+    assert history[-1].detail == "15"  # oldest retained
+
+
+def test_api_projects(dashboard_client):
+    """GET /api/projects returns JSON list of non-empty projects."""
+    response = dashboard_client.get("/api/projects")
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)
+    assert len(data) == 1  # testproj has 3 memories
+    proj = data[0]
+    assert proj["name"] == "testproj"
+    assert proj["total"] == 3
+    assert proj["agent_memory"] == 2
+    assert proj["file_indexed"] == 1
+
+
+def test_api_projects_excludes_empty(tmp_data_dir, tmp_config_path):
+    """GET /api/projects excludes projects with zero memories."""
+    config = AnnalConfig(
+        config_path=tmp_config_path,
+        data_dir=tmp_data_dir,
+        projects={"empty": ProjectConfig(), "nonempty": ProjectConfig()},
+    )
+    config.save()
+    pool = StorePool(config)
+    pool.get_store("nonempty").store("something", tags=["test"], source="test")
+    app = create_dashboard_app(pool, config)
+    client = TestClient(app)
+
+    data = client.get("/api/projects").json()
+    names = [p["name"] for p in data]
+    assert "nonempty" in names
+    assert "empty" not in names
+
+
+def test_dashboard_landing(dashboard_client):
+    """GET / returns the dashboard page with stats and activity feed."""
+    response = dashboard_client.get("/")
+    assert response.status_code == 200
+    html = response.text
+    # Stats ribbon should show aggregate numbers
+    assert "3" in html  # total memories
+    # Command palette input should be present
+    assert "search memories" in html.lower() or "jump to project" in html.lower()
+
+
+def test_dashboard_empty(empty_dashboard_client):
+    """GET / with no projects shows empty-friendly dashboard."""
+    response = empty_dashboard_client.get("/")
+    assert response.status_code == 200
+
+
+def test_api_projects_includes_stale(dashboard_client):
+    """GET /api/projects includes stale count per project."""
+    data = dashboard_client.get("/api/projects").json()
+    proj = data[0]
+    assert "stale" in proj
+    assert isinstance(proj["stale"], int)
+
+
+def test_event_has_created_at():
+    """Events should have a created_at timestamp."""
+    from datetime import datetime, timezone
+    from annal.events import Event
+
+    event = Event(type="memory_stored", project="test", detail="d")
+    assert hasattr(event, "created_at")
+    assert isinstance(event.created_at, str)
+    # Should be a valid ISO timestamp
+    parsed = datetime.fromisoformat(event.created_at)
+    assert parsed.tzinfo is not None

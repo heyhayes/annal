@@ -1,0 +1,331 @@
+{% extends "base.html" %}
+
+{% block title %}Annal{% endblock %}
+
+{% block content %}
+<!-- Zone 1: Command Palette -->
+<div class="command-palette" x-data="commandPalette()">
+  <div class="palette-input-wrapper">
+    <span class="palette-prompt">&gt;_</span>
+    <input type="text"
+           class="palette-input"
+           placeholder="search memories, jump to project..."
+           x-model="query"
+           @input="onInput()"
+           @keydown.arrow-down.prevent="moveDown()"
+           @keydown.arrow-up.prevent="moveUp()"
+           @keydown.enter.prevent="select()"
+           @keydown.escape="close()"
+           @focus="open = query.length > 0">
+  </div>
+  <div class="palette-results" x-show="open" x-cloak>
+    <template x-for="(item, index) in filtered" :key="item.name || item.type">
+      <a :href="item.url"
+         class="palette-result"
+         :class="{ 'palette-result--active': index === activeIndex }"
+         @mouseenter="activeIndex = index">
+        <span class="palette-result-name" x-text="item.label"></span>
+        <span class="palette-result-meta" x-text="item.meta"></span>
+      </a>
+    </template>
+    <div class="palette-result palette-result--search"
+         :class="{ 'palette-result--active': activeIndex === filtered.length }"
+         @mouseenter="activeIndex = filtered.length"
+         @click="searchAll()"
+         x-show="query.length > 0">
+      <span class="palette-result-name">Search all projects for '<span x-text="query"></span>'</span>
+    </div>
+  </div>
+</div>
+
+<!-- Zone 2: Stats Ribbon -->
+<div class="stats-ribbon-container" x-data="statsBreakdown()">
+  <div class="stats-ribbon">
+    <div class="stat stat--clickable" @click="toggle('total')">
+      <span class="stat-number">{{ total_memories }}</span>
+      <span class="stat-label">memories</span>
+    </div>
+    <div class="stat-divider"></div>
+    <div class="stat stat--clickable" @click="toggle('projects')">
+      <span class="stat-number">{{ total_projects }}</span>
+      <span class="stat-label">projects</span>
+    </div>
+    <div class="stat-divider"></div>
+    <div class="stat stat--clickable" @click="toggle('agent')">
+      <span class="stat-number">{{ total_agent }}</span>
+      <span class="stat-label">agent</span>
+    </div>
+    <div class="stat-divider"></div>
+    <div class="stat stat--clickable{% if total_stale > 0 %} stat--warning{% endif %}" @click="toggle('stale')">
+      <span class="stat-number">{{ total_stale }}</span>
+      <span class="stat-label">stale</span>
+    </div>
+    <div class="stat-divider"></div>
+    <div class="stat">
+      <span class="stat-status{% if indexing %} stat-status--active{% endif %}">
+        <span class="status-dot{% if indexing %} status-dot--active{% endif %}"></span>
+        {% if indexing %}indexing…{% else %}idle{% endif %}
+      </span>
+      <span class="stat-label">status</span>
+    </div>
+  </div>
+
+  <!-- Breakdown panel — CSS grid transition, no Alpine x-transition needed -->
+  <div class="stat-breakdown-wrapper" :class="expanded ? 'stat-breakdown--open' : ''">
+    <div class="stat-breakdown">
+      <template x-for="p in breakdownData" :key="p.name">
+        <a :href="p.url" class="breakdown-row">
+          <span class="breakdown-name" x-text="p.name"></span>
+          <span class="breakdown-count" x-text="p.count"></span>
+        </a>
+      </template>
+    </div>
+  </div>
+</div>
+
+<!-- Zone 3: Activity Feed -->
+<div class="activity-feed" hx-ext="sse" sse-connect="/events">
+  <h2 class="feed-title">Activity</h2>
+  <div class="feed-container" id="feed-container">
+    {% for event in recent_events %}
+    <div class="feed-entry feed-entry--{{ event.type }}">
+      <a href="/memories?project={{ event.project }}" class="feed-project">{{ event.project }}</a>
+      <span class="feed-dot">&middot;</span>
+      <span class="feed-action feed-action--{{ event.type }}">{{ event.type.replace('_', ' ') }}</span>
+      {% if event.detail %}
+      <span class="feed-dot">&middot;</span>
+      <span class="feed-detail">{{ event.detail[:80] }}</span>
+      {% endif %}
+      <span class="feed-time" data-ts="{{ event.created_at }}"></span>
+    </div>
+    {% endfor %}
+    {% if not recent_events %}
+    <div class="feed-empty">No recent activity. Memories will appear here as agents store and search.</div>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+function statsBreakdown() {
+  return {
+    expanded: null,
+    projects: [],
+
+    async init() {
+      var resp = await fetch('/api/projects');
+      this.projects = await resp.json();
+    },
+
+    toggle(stat) {
+      if (this.expanded === stat) {
+        this.expanded = null;
+      } else {
+        this.expanded = stat;
+      }
+    },
+
+    get breakdownData() {
+      if (!this.expanded || !this.projects.length) return [];
+      var stat = this.expanded;
+      return this.projects
+        .map(function(p) {
+          var count, filter;
+          if (stat === 'total') { count = p.total; filter = ''; }
+          else if (stat === 'projects') { count = p.total; filter = ''; }
+          else if (stat === 'agent') { count = p.agent_memory; filter = '&type=agent-memory'; }
+          else if (stat === 'stale') { count = p.stale; filter = '&stale=1'; }
+          else { count = 0; filter = ''; }
+          return {
+            name: p.name,
+            count: count,
+            url: '/memories?project=' + p.name + filter
+          };
+        })
+        .filter(function(p) { return p.count > 0; })
+        .sort(function(a, b) { return b.count - a.count; });
+    }
+  };
+}
+
+function commandPalette() {
+  return {
+    query: '',
+    open: false,
+    activeIndex: 0,
+    projects: [],
+
+    async init() {
+      const resp = await fetch('/api/projects');
+      this.projects = await resp.json();
+    },
+
+    get filtered() {
+      if (!this.query) return [];
+      const q = this.query.toLowerCase();
+      return this.projects
+        .filter(p => p.name.toLowerCase().includes(q))
+        .slice(0, 7)
+        .map(p => ({
+          label: p.name,
+          meta: p.total + ' memories',
+          url: '/memories?project=' + p.name,
+        }));
+    },
+
+    onInput() {
+      this.open = this.query.length > 0;
+      this.activeIndex = 0;
+    },
+
+    moveDown() {
+      const max = this.filtered.length;
+      if (this.activeIndex < max) this.activeIndex++;
+    },
+
+    moveUp() {
+      if (this.activeIndex > 0) this.activeIndex--;
+    },
+
+    select() {
+      if (this.activeIndex < this.filtered.length) {
+        window.location.href = this.filtered[this.activeIndex].url;
+      } else {
+        this.searchAll();
+      }
+    },
+
+    searchAll() {
+      if (this.query) {
+        window.location.href = '/memories?projects=*&q=' + encodeURIComponent(this.query);
+      }
+    },
+
+    close() {
+      this.open = false;
+    }
+  };
+}
+
+function timeAgo(iso) {
+  if (!iso) return '';
+  var now = Date.now();
+  var then = new Date(iso).getTime();
+  if (isNaN(then)) return '';
+  var seconds = Math.floor((now - then) / 1000);
+  if (seconds < 5) return 'now';
+  if (seconds < 60) return seconds + 's ago';
+  var minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return minutes + 'm ago';
+  var hours = Math.floor(minutes / 60);
+  if (hours < 24) return hours + 'h ago';
+  var days = Math.floor(hours / 24);
+  return days + 'd ago';
+}
+
+// Refresh all visible timestamps every 30s
+setInterval(function() {
+  document.querySelectorAll('.feed-time[data-ts]').forEach(function(el) {
+    el.textContent = timeAgo(el.dataset.ts);
+  });
+}, 30000);
+
+// Initial render of server-side timestamps
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('.feed-time[data-ts]').forEach(function(el) {
+    el.textContent = timeAgo(el.dataset.ts);
+  });
+});
+
+// SSE activity feed updates
+document.body.addEventListener('sse:memory_stored', function(e) {
+  prependFeedEntry(e.detail.value, 'memory stored');
+});
+document.body.addEventListener('sse:memory_deleted', function(e) {
+  prependFeedEntry(e.detail.value, 'memory deleted');
+});
+document.body.addEventListener('sse:memory_updated', function(e) {
+  prependFeedEntry(e.detail.value, 'memory updated');
+});
+document.body.addEventListener('sse:index_started', function(e) {
+  prependFeedEntry(e.detail.value, 'index started');
+  updateStatus(true);
+});
+document.body.addEventListener('sse:index_complete', function(e) {
+  prependFeedEntry(e.detail.value, 'index complete');
+  updateStatus(false);
+});
+
+function prependFeedEntry(value, action) {
+  var parts = value.split('|');
+  var project = parts[0] || '';
+  var detail = parts[1] || '';
+  var timestamp = parts[2] || new Date().toISOString();
+  var eventType = action.replace(/ /g, '_');
+  var container = document.getElementById('feed-container');
+  if (!container) return;
+
+  var empty = container.querySelector('.feed-empty');
+  if (empty) empty.remove();
+
+  var entry = document.createElement('div');
+  entry.className = 'feed-entry feed-entry--' + eventType;
+
+  var projLink = document.createElement('a');
+  projLink.className = 'feed-project';
+  projLink.href = '/memories?project=' + encodeURIComponent(project);
+  projLink.textContent = project;
+  entry.appendChild(projLink);
+
+  var dot1 = document.createElement('span');
+  dot1.className = 'feed-dot';
+  dot1.textContent = '\u00b7';
+  entry.appendChild(dot1);
+
+  var actionSpan = document.createElement('span');
+  actionSpan.className = 'feed-action feed-action--' + eventType;
+  actionSpan.textContent = action;
+  entry.appendChild(actionSpan);
+
+  if (detail) {
+    var dot2 = document.createElement('span');
+    dot2.className = 'feed-dot';
+    dot2.textContent = '\u00b7';
+    entry.appendChild(dot2);
+
+    var detailSpan = document.createElement('span');
+    detailSpan.className = 'feed-detail';
+    detailSpan.textContent = detail.substring(0, 80);
+    entry.appendChild(detailSpan);
+  }
+
+  var timeSpan = document.createElement('span');
+  timeSpan.className = 'feed-time';
+  timeSpan.dataset.ts = timestamp;
+  timeSpan.textContent = timeAgo(timestamp);
+  entry.appendChild(timeSpan);
+
+  container.insertBefore(entry, container.firstChild);
+
+  while (container.children.length > 20) {
+    container.removeChild(container.lastChild);
+  }
+}
+
+function updateStatus(indexing) {
+  var el = document.querySelector('.stat-status');
+  if (!el) return;
+  var dot = el.querySelector('.status-dot');
+  if (dot) {
+    dot.className = 'status-dot' + (indexing ? ' status-dot--active' : '');
+  }
+  // Update text content without removing the dot
+  var textNode = el.lastChild;
+  if (textNode && textNode.nodeType === 3) {
+    textNode.textContent = indexing ? 'indexing\u2026' : 'idle';
+  } else {
+    el.appendChild(document.createTextNode(indexing ? 'indexing\u2026' : 'idle'));
+  }
+  el.className = 'stat-status' + (indexing ? ' stat-status--active' : '');
+}
+</script>
+{% endblock %}

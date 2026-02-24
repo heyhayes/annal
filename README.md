@@ -267,7 +267,21 @@ Start-ScheduledTask -TaskName "Annal MCP Server"
 
 ## Dashboard
 
-When running as an HTTP daemon, the dashboard is available at `http://localhost:9200`. It provides memory browsing with pagination and filters (by type, source, tags), semantic search with cross-project support, expandable content previews, bulk delete by selection or filter, a "Show superseded" toggle for viewing replaced memories, a "Show stale only" filter that surfaces memories that haven't been accessed in 60+ days or were never accessed, and live SSE updates when memories are stored, deleted, or indexing is in progress. Clickable tag pills in the table jump to filtered views. The project overview table shows stale memory counts per project with links to the filtered view.
+When running as an HTTP daemon, the dashboard is available at `http://localhost:9200`. It provides a terminal-inspired interface for browsing and managing memories across all projects.
+
+![Dashboard landing page — command palette, stats ribbon with per-project breakdown, live activity feed](docs/images/dashboard-landing.png)
+
+The landing page features a command palette for quick navigation, a stats ribbon that expands to show per-project breakdowns when clicked, and a live activity feed with SSE updates as memories are stored, deleted, or indexing runs.
+
+![Stats ribbon expanded to show per-project memory counts](docs/images/dashboard-stats-expanded.png)
+
+The memories view provides browsing with pagination and filters (by type, source, tags), semantic search with cross-project support, expandable content previews, bulk delete by selection or filter, a "Show superseded" toggle for viewing replaced memories, and a "Show stale only" filter that surfaces memories not accessed in 60+ days.
+
+![Memory browsing with filters, semantic search, and tag pills](docs/images/dashboard-memories.png)
+
+The projects page shows all registered projects with memory counts broken down by type, stale counts, and top tags rendered as clickable pills that jump to filtered memory views.
+
+![Project overview with per-project stats and tag pills](docs/images/dashboard-projects.png)
 
 Disable with `--no-dashboard` if not needed.
 
@@ -282,7 +296,7 @@ pip install -e ".[dev]"
 pytest -v
 ```
 
-266 tests cover store operations, search, hit tracking, stale detection, supersession, batch storage, indexing, file watching, dashboard routes, SSE events, CLI installation, export/import, migration, and a shared backend conformance suite that runs against both ChromaDB and Qdrant.
+275 tests cover store operations, search, hit tracking, stale detection, supersession, batch storage, indexing, file watching, dashboard routes, SSE events, CLI installation, export/import, migration, and a shared backend conformance suite that runs against both ChromaDB and Qdrant.
 
 ## License
 
