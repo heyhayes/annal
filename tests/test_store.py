@@ -905,3 +905,26 @@ def test_find_stale_never_accessed_flag(tmp_data_dir):
 
     result_without = store.find_stale(include_never_accessed=False)
     assert result_without["never_accessed_count"] == 0
+
+
+def test_agent_memory_boost_over_file_indexed(tmp_data_dir):
+    """Agent memories should rank higher than file-indexed chunks at similar similarity."""
+    store = make_store(tmp_data_dir, "boost_test")
+    # Store similar content as both file-indexed and agent-memory
+    store.store(
+        content="The billing module handles tax calculation via TaxService",
+        tags=["indexed"],
+        source="file:/tmp/docs/billing.md",
+        chunk_type="file-indexed",
+    )
+    store.store(
+        content="The billing module tax calculation uses TaxService — watch for rounding",
+        tags=["billing", "memory"],
+        source="session observation",
+    )
+
+    results = store.search("billing tax calculation", limit=2)
+    assert len(results) == 2
+    # Agent memory should rank first due to boost
+    assert results[0]["chunk_type"] == "agent-memory"
+    assert results[1]["chunk_type"] == "file-indexed"

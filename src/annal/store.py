@@ -44,6 +44,7 @@ class BatchResult:
         return [i.mem_id for i in self.items if i.status == "stored" and i.mem_id]
 
 FUZZY_TAG_THRESHOLD = 0.72
+AGENT_MEMORY_BOOST = 0.05
 
 _ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2})?")
 
@@ -314,11 +315,15 @@ class MemoryStore:
                     pass  # best-effort telemetry
 
             distance = r.distance if r.distance is not None else 0.0
+            score = 1.0 - distance
+            if r.metadata.get("chunk_type") == "agent-memory":
+                score += AGENT_MEMORY_BOOST
             mem = self._format_result(r)
-            mem["score"] = 1.0 - distance
+            mem["score"] = score
             mem["distance"] = distance
             memories.append(mem)
 
+        memories.sort(key=lambda m: m["score"], reverse=True)
         return memories[:limit]
 
     def get_by_ids(self, ids: list[str], track_hits: bool = True) -> list[dict]:
